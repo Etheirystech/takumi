@@ -17,6 +17,7 @@ pub mod http_image_store;
 pub mod image_store;
 /// Viewport definitions and rendering context
 pub mod viewport;
+pub mod glyph;
 
 pub use context::*;
 pub use error::*;

@@ -15,6 +15,10 @@ ts-rs = "11.0"
 slotmap = "1.0"
 rayon = "1.10"
 
+[dependencies.tiny-skia]
+version = "0.11"
+default-features = false
+
 [dependencies.base64]
 version = "0.22"
 optional = true
@@ -42,6 +46,7 @@ optional = true
 
 [dependencies.cosmic-text]
 version = "0.14"
+default-features = false
 features = ["shape-run-cache"]
 
 [dependencies.taffy]
@@ -68,7 +73,9 @@ default-features = false
 optional = true
 
 [features]
-default = ["woff2", "woff", "image_data_uri", "http_image_store", "svg"]
+default = ["woff2", "woff", "image_data_uri", "http_image_store", "svg", "std"]
+std = ["tiny-skia/std", "cosmic-text/std"]
+no_std = ["cosmic-text/no_std"]
 wasm = ["dep:wasm-bindgen"]
 image_data_uri = ["dep:base64"]
 svg = ["dep:resvg"]

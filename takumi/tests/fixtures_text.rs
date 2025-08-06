@@ -15,7 +15,7 @@ fn fixtures_text_basic() {
       background_color: Some(Color::Rgb(240, 240, 240)),
       ..Default::default()
     },
-    text: "The quick brown fox jumps over the lazy dog 12345".to_string(),
+    text: "🦊 The quick brown fox jumps over the lazy dog 12345".to_string(),
   };
 
   run_style_width_test(DefaultNodeKind::Text(text), "tests/fixtures/text_basic.png");
@@ -207,4 +207,23 @@ Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliqu
   };
 
   run_style_width_test(text.into(), "tests/fixtures/text_ellipsis_line_clamp_2.png");
+}
+
+#[test]
+fn fixtures_text_arabic_rtl() {
+  let text = TextNode {
+    style: Style {
+      background_color: Some(Color::Rgb(240, 240, 240)),
+      inheritable_style: InheritableStyle {
+        font_size: Some(Px(24.0)),
+        ..Default::default()
+      },
+      width: Percentage(100.0),
+      ..Default::default()
+    },
+    // Arabic with punctuation and mixed Western/Arabic-Indic digits to exercise shaping and bidi
+    text: "مرحبا بالعالم — الاختبار 123٤٥٦، العربية!".to_string(),
+  };
+
+  run_style_width_test(text.into(), "tests/fixtures/text_arabic_rtl.png");
 }

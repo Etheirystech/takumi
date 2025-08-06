@@ -1,12 +1,23 @@
-use cosmic_text::{Attrs, Buffer, Color, Metrics, Shaping};
-use image::Rgba;
-use taffy::{Layout, Size};
+use std::io::Cursor;
+
+use cosmic_text::{
+  Attrs, Buffer, LayoutGlyph, Metrics, PhysicalGlyph, Shaping,
+  rustybuzz::Face,
+  ttf_parser::{self, GlyphId},
+};
+use image::{
+  ImageFormat, ImageReader, Rgba, RgbaImage,
+  imageops::{FilterType, resize},
+};
+use taffy::{Layout, Point, Size};
+use tiny_skia::{FillRule, Paint, PathBuilder, Pixmap, Transform};
 
 use crate::{
-  ColorInput,
+  Color, ColorInput, SidesValue,
   core::RenderContext,
+  effects::{BorderProperties, draw_border},
   rendering::FastBlendImage,
-  style::{ColorAt, ResolvedFontStyle, TextOverflow},
+  style::{ResolvedFontStyle, TextOverflow},
 };
 
 const ELLIPSIS_CHAR: &str = "…";
@@ -36,12 +47,10 @@ pub fn draw_text(
   );
 
   let Some(last_run) = buffer.layout_runs().last() else {
-    // No runs, nothing to draw
     return;
   };
 
   let Some(last_glyph) = last_run.glyphs.last() else {
-    // No runs, nothing to draw
     return;
   };
 
@@ -50,7 +59,6 @@ pub fn draw_text(
 
   if should_append_ellipsis {
     let first_glyph = last_run.glyphs.first().unwrap();
-
     let mut truncated_text = &text[first_glyph.start..last_glyph.end];
 
     while !truncated_text.is_empty() {
@@ -102,53 +110,198 @@ fn draw_buffer(
   (start_x, start_y): (f32, f32),
 ) {
   let mut font_system = context.global.font_context.font_system.lock().unwrap();
-  let mut font_cache = context.global.font_context.font_cache.lock().unwrap();
+
+  let pixmap_width = content_box.width.ceil() as u32;
+  let pixmap_height = content_box.height.ceil() as u32;
+
+  if pixmap_width == 0 || pixmap_height == 0 {
+    return;
+  }
+
+  let mut pixmap = Pixmap::new(pixmap_width, pixmap_height).unwrap();
+  let mut paint = Paint::default();
+
+  if let ColorInput::Color(color_value) = color {
+    let rgba: Rgba<u8> = (*color_value).into();
+    let [r, g, b, a] = rgba.0;
+
+    paint.set_color(tiny_skia::Color::from_rgba8(r, g, b, a));
+  } else {
+    paint.set_color(tiny_skia::Color::BLACK);
+  }
+  paint.anti_alias = true;
+
+  let mut render_glyphs = vec![];
 
   for run in buffer.layout_runs() {
     for glyph in run.glyphs.iter() {
       let physical_glyph = glyph.physical((0., 0.), 1.0);
 
-      let glyph_color = match glyph.color_opt {
-        Some(some) => some,
-        None => Color(0),
+      if let Some(cached) = context
+        .global
+        .font_context
+        .get_cached_glyph(&physical_glyph.cache_key)
+      {
+        canvas.overlay_image(
+          &cached,
+          (start_x + glyph.x as f32) as u32,
+          (start_y + run.line_top + glyph.y as f32) as u32,
+        );
+        continue;
+      }
+
+      render_glyphs.push(glyph);
+    }
+  }
+
+  for run in buffer.layout_runs() {
+    for glyph in run.glyphs.iter() {
+      let physical_glyph = glyph.physical((0., 0.), 1.0);
+
+      let font = font_system.get_font(glyph.font_id).unwrap();
+
+      let face = font.rustybuzz();
+
+      // Compute consistent glyph position once for both bitmap and outline glyphs
+      let glyph_x = physical_glyph.x as f32;
+      let glyph_y = run.line_y + physical_glyph.y as f32;
+
+      // Prefer a bitmap strike if available; resize with rounded scaling to avoid truncation
+      if let Some(image) = face.glyph_raster_image(GlyphId(glyph.glyph_id), 16) {
+        let decoded = ImageReader::with_format(Cursor::new(image.data), ImageFormat::Png)
+          .with_guessed_format()
+          .unwrap()
+          .decode()
+          .unwrap();
+
+        let scale = glyph.w / image.width as f32;
+
+        let resized = resize(
+          &decoded,
+          (image.width as f32 * scale) as u32,
+          (image.height as f32 * scale) as u32,
+          FilterType::CatmullRom,
+        );
+
+        canvas.overlay_image(
+          &resized,
+          (start_x + glyph_x) as u32,
+          (start_y + run.line_top) as u32,
+        );
+
+        if context.global.draw_debug_border {
+          draw_border(
+            canvas,
+            BorderProperties {
+              width: SidesValue::SingleValue(1.0).into(),
+              offset: Point {
+                x: start_x + glyph_x,
+                y: start_y + run.line_top,
+              },
+              size: Size {
+                width: resized.width() as f32,
+                height: resized.height() as f32,
+              },
+              color: Color::Rgb(0, 0, 255).into(),
+              radius: None,
+            },
+          );
+        }
+
+        continue;
+      }
+
+      let scale = glyph.font_size / face.units_per_em() as f32;
+      let mut outline_builder = OutlineBuilder::new(scale);
+
+      if face
+        .outline_glyph(GlyphId(glyph.glyph_id), &mut outline_builder)
+        .is_none()
+      {
+        continue;
+      }
+
+      let Some(path) = outline_builder.builder.finish() else {
+        continue;
       };
 
-      font_cache.with_pixels(
-        &mut font_system,
-        physical_glyph.cache_key,
-        glyph_color,
-        |glyph_x, glyph_y, glyph_color| {
-          if glyph_color.a() == 0 {
-            return;
-          }
+      if context.global.draw_debug_border {
+        let bounds = path.bounds();
+        draw_border(
+          canvas,
+          BorderProperties {
+            width: SidesValue::SingleValue(1.0).into(),
+            offset: Point {
+              x: start_x + glyph_x + bounds.left(),
+              y: start_y + run.line_y + bounds.top(),
+            },
+            size: Size {
+              width: bounds.width(),
+              height: bounds.height(),
+            },
+            color: Color::Rgb(0, 0, 255).into(),
+            radius: None,
+          },
+        );
+      }
 
-          let x = physical_glyph.x + glyph_x;
-          let y = run.line_y as i32 + physical_glyph.y + glyph_y;
+      // Create transform for glyph positioning
+      let transform = Transform::from_translate(glyph_x, glyph_y);
 
-          let glyph_color = glyph_color.as_rgba();
-
-          let text_alpha = glyph_color[3] as f32 / 255.0;
-
-          // FIXME: emojis with rich coloring with black might not be rendered correctly.
-          let mut render_color: Rgba<u8> =
-            if glyph_color[0] == 0 && glyph_color[1] == 0 && glyph_color[2] == 0 {
-              color
-                .at(content_box.width, content_box.height, x as u32, y as u32)
-                .into()
-            } else {
-              Rgba(glyph_color)
-            };
-
-          render_color.0[3] = (render_color.0[3] as f32 * text_alpha) as u8;
-
-          canvas.draw_pixel(
-            start_x as u32 + x as u32,
-            start_y as u32 + y as u32,
-            render_color,
-          );
-        },
-      );
+      // Draw the glyph path to the main pixmap
+      pixmap.fill_path(&path, &paint, FillRule::Winding, transform, None);
     }
+  }
+
+  // Convert the entire pixmap to image and overlay once
+  let image = RgbaImage::from_raw(pixmap.width(), pixmap.height(), pixmap.take()).unwrap();
+  canvas.overlay_image(&image, start_x as u32, start_y as u32);
+}
+
+struct OutlineBuilder {
+  builder: PathBuilder,
+  scale: f32,
+}
+
+impl OutlineBuilder {
+  pub fn new(scale: f32) -> Self {
+    OutlineBuilder {
+      builder: PathBuilder::new(),
+      scale,
+    }
+  }
+
+  fn scale_point(&self, x: f32, y: f32) -> (f32, f32) {
+    (x * self.scale, -y * self.scale) // Consistent Y-flipping
+  }
+}
+
+impl ttf_parser::OutlineBuilder for OutlineBuilder {
+  fn move_to(&mut self, x: f32, y: f32) {
+    let (sx, sy) = self.scale_point(x, y);
+    self.builder.move_to(sx, sy);
+  }
+
+  fn line_to(&mut self, x: f32, y: f32) {
+    let (sx, sy) = self.scale_point(x, y);
+    self.builder.line_to(sx, sy);
+  }
+
+  fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+    let (sx1, sy1) = self.scale_point(x1, y1);
+    let (sx, sy) = self.scale_point(x, y);
+    self.builder.quad_to(sx1, sy1, sx, sy);
+  }
+
+  fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+    let (sx1, sy1) = self.scale_point(x1, y1);
+    let (sx2, sy2) = self.scale_point(x2, y2);
+    let (sx, sy) = self.scale_point(x, y);
+    self.builder.cubic_to(sx1, sy1, sx2, sy2, sx, sy);
+  }
+
+  fn close(&mut self) {
+    self.builder.close();
   }
 }
 

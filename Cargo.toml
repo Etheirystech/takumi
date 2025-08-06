@@ -14,7 +14,3 @@ opt-level = "z"
 lto = true
 panic = "abort"
 codegen-units = 1
-
-# https://github.com/fzyzcjy/flutter_rust_bridge/issues/2601#issuecomment-2708849140
-[profile.release.package.takumi-wasm]
-strip = "debuginfo"

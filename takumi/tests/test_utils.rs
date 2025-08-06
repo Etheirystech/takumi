@@ -25,6 +25,18 @@ fn create_test_context() -> GlobalContext {
     .unwrap();
 
   context
+    .font_context
+    .load_font(include_bytes!("../../assets/fonts/noto-sans/NotoColorEmoji.ttf").to_vec())
+    .unwrap();
+
+  context
+    .font_context
+    .load_font(
+      include_bytes!("../../assets/fonts/sil/scheherazade-new-v17-arabic-500.woff2").to_vec(),
+    )
+    .unwrap();
+
+  context
 }
 
 fn create_test_renderer() -> ImageRenderer<DefaultNodeKind> {
