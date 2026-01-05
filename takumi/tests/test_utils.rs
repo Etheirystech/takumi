@@ -63,14 +63,14 @@ fn create_test_context() -> GlobalContext {
     .read_to_string(&mut luma_image_data)
     .unwrap();
 
-  context.persistent_image_store.insert(
+  context.persistent_image_store_mut().insert(
     "assets/images/yeecord.png".to_string(),
     Arc::new(ImageSource::Bitmap(
       load_from_memory(&yeecord_image_data).unwrap().into_rgba8(),
     )),
   );
 
-  context.persistent_image_store.insert(
+  context.persistent_image_store_mut().insert(
     "assets/images/luma.svg".to_string(),
     parse_svg_str(&luma_image_data).unwrap(),
   );
@@ -83,7 +83,7 @@ fn create_test_context() -> GlobalContext {
       .unwrap();
 
     context
-      .font_context
+      .font_context_mut()
       .load_and_store(
         &font_data,
         Some(FontInfoOverride {

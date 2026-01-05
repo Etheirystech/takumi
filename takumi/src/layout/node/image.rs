@@ -163,7 +163,7 @@ pub(crate) fn resolve_image(src: &str, context: &RenderContext) -> ImageResult {
     return Ok(img.clone());
   }
 
-  if let Some(img) = context.global.persistent_image_store.get(src) {
+  if let Some(img) = context.global.persistent_image_store().get(src) {
     return Ok(img.clone());
   }
 

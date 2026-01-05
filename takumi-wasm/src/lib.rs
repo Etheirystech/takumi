@@ -199,12 +199,6 @@ impl Renderer {
     Renderer::default()
   }
 
-  /// @deprecated use `loadFont` instead.
-  #[wasm_bindgen(js_name = loadFontWithInfo)]
-  pub fn load_font_with_info(&mut self, font: FontType) {
-    self.load_font(font)
-  }
-
   #[wasm_bindgen(js_name = loadFont)]
   pub fn load_font(&mut self, font: FontType) {
     let input: Font = from_value(font.into()).unwrap();
@@ -213,14 +207,14 @@ impl Renderer {
       Font::Buffer(buffer) => {
         self
           .context
-          .font_context
+          .font_context_mut()
           .load_and_store(&buffer, None, None)
           .unwrap();
       }
       Font::Object(details) => {
         self
           .context
-          .font_context
+          .font_context_mut()
           .load_and_store(
             &details.data,
             Some(FontInfoOverride {
@@ -239,7 +233,7 @@ impl Renderer {
 
   #[wasm_bindgen(js_name = putPersistentImage)]
   pub fn put_persistent_image(&self, src: String, data: &[u8]) {
-    self.context.persistent_image_store.insert(
+    self.context.persistent_image_store().insert(
       src,
       Arc::new(ImageSource::Bitmap(
         load_from_memory(data).unwrap().into_rgba8(),
@@ -249,7 +243,7 @@ impl Renderer {
 
   #[wasm_bindgen(js_name = clearImageStore)]
   pub fn clear_image_store(&self) {
-    self.context.persistent_image_store.clear();
+    self.context.persistent_image_store().clear();
   }
 
   #[wasm_bindgen]

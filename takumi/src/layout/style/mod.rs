@@ -15,6 +15,7 @@ use serde::{
 pub use stylesheets::*;
 
 /// Represents a CSS property value that can be explicitly set, inherited from parent, or reset to initial value.
+#[non_exhaustive]
 #[derive(Default, Clone, Debug, PartialEq)]
 pub enum CssValue<T, const DEFAULT_INHERIT: bool = false> {
   /// Property was not set by the user

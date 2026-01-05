@@ -25,7 +25,7 @@ impl Task for LoadFontTask<'_> {
     for (font, buffer) in &self.buffers {
       if self
         .context
-        .font_context
+        .font_context_mut()
         .load_and_store(
           buffer,
           Some(FontInfoOverride {

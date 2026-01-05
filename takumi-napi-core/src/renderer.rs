@@ -82,21 +82,15 @@ pub enum OutputFormat {
   webp,
   png,
   jpeg,
-  /// @deprecated Use lowercase `webp` instead, may be removed in the future
-  WebP,
-  /// @deprecated Use lowercase `jpeg` instead, may be removed in the future
-  Jpeg,
-  /// @deprecated Use lowercase `png` instead, may be removed in the future
-  Png,
   raw,
 }
 
 impl From<OutputFormat> for ImageOutputFormat {
   fn from(format: OutputFormat) -> Self {
     match format {
-      OutputFormat::WebP | OutputFormat::webp => ImageOutputFormat::WebP,
-      OutputFormat::Jpeg | OutputFormat::jpeg => ImageOutputFormat::Jpeg,
-      OutputFormat::Png | OutputFormat::png => ImageOutputFormat::Png,
+      OutputFormat::webp => ImageOutputFormat::WebP,
+      OutputFormat::jpeg => ImageOutputFormat::Jpeg,
+      OutputFormat::png => ImageOutputFormat::Png,
       // SAFETY: It's handled in the render task
       OutputFormat::raw => unreachable!(),
     }
@@ -154,7 +148,7 @@ impl Renderer {
     if load_default_fonts {
       for (font, name, generic) in EMBEDDED_FONTS {
         global
-          .font_context
+          .font_context_mut()
           .load_and_store(
             font,
             Some(FontInfoOverride {
@@ -171,7 +165,7 @@ impl Renderer {
       for font in fonts {
         if let Ok(buffer) = buffer_slice_from_object(env, font) {
           global
-            .font_context
+            .font_context_mut()
             .load_and_store(&buffer, None, None)
             .unwrap();
 
@@ -191,13 +185,13 @@ impl Renderer {
         };
 
         global
-          .font_context
+          .font_context_mut()
           .load_and_store(&buffer, Some(font_override), None)
           .unwrap();
       }
     }
 
-    let renderer = Self {
+    let mut renderer = Self {
       global,
       resources_cache: if resource_cache_capacity > 0 {
         Some(Arc::new(Mutex::new(LruCache::new(
@@ -215,7 +209,7 @@ impl Renderer {
 
         renderer
           .global
-          .persistent_image_store
+          .persistent_image_store_mut()
           .insert(image.src, image_source);
       }
     }
@@ -230,25 +224,6 @@ impl Renderer {
 
       lock.clear();
     }
-  }
-
-  /// @deprecated This function does nothing.
-  #[napi]
-  pub fn purge_font_cache(&self) {}
-
-  /// @deprecated Use `putPersistentImage` instead (to align with the naming convention for sync/async functions).
-  #[napi(
-    ts_args_type = "src: string, data: Uint8Array | ArrayBuffer, signal?: AbortSignal",
-    ts_return_type = "Promise<void>"
-  )]
-  pub fn put_persistent_image_async(
-    &'_ self,
-    env: Env,
-    src: String,
-    data: Object,
-    signal: Option<AbortSignal>,
-  ) -> Result<AsyncTask<PutPersistentImageTask<'_>>> {
-    self.put_persistent_image(env, src, data, signal)
   }
 
   #[napi(
@@ -267,25 +242,11 @@ impl Renderer {
     Ok(AsyncTask::with_optional_signal(
       PutPersistentImageTask {
         src: Some(src),
-        store: &self.global.persistent_image_store,
+        store: self.global.persistent_image_store(),
         buffer,
       },
       signal,
     ))
-  }
-
-  /// @deprecated Use `loadFont` instead (to align with the naming convention for sync/async functions).
-  #[napi(
-    ts_args_type = "data: Font, signal?: AbortSignal",
-    ts_return_type = "Promise<number>"
-  )]
-  pub fn load_font_async(
-    &'_ mut self,
-    env: Env,
-    data: Object,
-    signal: Option<AbortSignal>,
-  ) -> AsyncTask<LoadFontTask<'_>> {
-    self.load_fonts(env, vec![data], signal)
   }
 
   #[napi(
@@ -299,20 +260,6 @@ impl Renderer {
     signal: Option<AbortSignal>,
   ) -> AsyncTask<LoadFontTask<'_>> {
     self.load_fonts(env, vec![data], signal)
-  }
-
-  /// @deprecated Use `loadFonts` instead (to align with the naming convention for sync/async functions).
-  #[napi(
-    ts_args_type = "fonts: Font[], signal?: AbortSignal",
-    ts_return_type = "Promise<number>"
-  )]
-  pub fn load_fonts_async(
-    &'_ mut self,
-    env: Env,
-    fonts: Vec<Object>,
-    signal: Option<AbortSignal>,
-  ) -> AsyncTask<LoadFontTask<'_>> {
-    self.load_fonts(env, fonts, signal)
   }
 
   #[napi(
@@ -350,7 +297,7 @@ impl Renderer {
 
   #[napi]
   pub fn clear_image_store(&self) {
-    self.global.persistent_image_store.clear();
+    self.global.persistent_image_store().clear();
   }
 
   #[napi(
@@ -376,21 +323,6 @@ impl Renderer {
       )?,
       signal,
     ))
-  }
-
-  /// @deprecated Use `render` instead (to align with the naming convention for sync/async functions).
-  #[napi(
-    ts_args_type = "source: AnyNode, options?: RenderOptions, signal?: AbortSignal",
-    ts_return_type = "Promise<Buffer>"
-  )]
-  pub fn render_async(
-    &'_ mut self,
-    env: Env,
-    source: Object,
-    options: Option<RenderOptions>,
-    signal: Option<AbortSignal>,
-  ) -> Result<AsyncTask<RenderTask<'_>>> {
-    self.render(env, source, options, signal)
   }
 
   #[napi(

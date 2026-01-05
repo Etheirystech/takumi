@@ -57,7 +57,7 @@
 //! let mut global = GlobalContext::default();
 //!
 //! // Load fonts
-//! global.font_context.load_and_store(include_bytes!("../../assets/fonts/geist/Geist[wght].woff2"), None, None);
+//! global.font_context_mut().load_and_store(include_bytes!("../../assets/fonts/geist/Geist[wght].woff2"), None, None);
 //!
 //! // Create a viewport
 //! let viewport = Viewport::new(Some(1200), Some(630));
@@ -118,7 +118,29 @@ use crate::resources::{font::FontContext, image::PersistentImageStore};
 #[derive(Default)]
 pub struct GlobalContext {
   /// The font context for text rendering
-  pub font_context: FontContext,
+  pub(crate) font_context: FontContext,
   /// The image store for persisting contents
-  pub persistent_image_store: PersistentImageStore,
+  pub(crate) persistent_image_store: PersistentImageStore,
+}
+
+impl GlobalContext {
+  /// Returns a reference to the font context.
+  pub fn font_context(&self) -> &FontContext {
+    &self.font_context
+  }
+
+  /// Returns a mutable reference to the font context.
+  pub fn font_context_mut(&mut self) -> &mut FontContext {
+    &mut self.font_context
+  }
+
+  /// Returns a reference to the persistent image store.
+  pub fn persistent_image_store(&self) -> &PersistentImageStore {
+    &self.persistent_image_store
+  }
+
+  /// Returns a mutable reference to the persistent image store.
+  pub fn persistent_image_store_mut(&mut self) -> &mut PersistentImageStore {
+    &mut self.persistent_image_store
+  }
 }
