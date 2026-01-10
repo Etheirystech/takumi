@@ -243,7 +243,7 @@ impl Renderer {
     let image = load_from_memory(data).map_err(map_error)?.into_rgba8();
     self
       .context
-      .persistent_image_store
+      .persistent_image_store()
       .insert(src, Arc::new(ImageSource::Bitmap(image)));
     Ok(())
   }
