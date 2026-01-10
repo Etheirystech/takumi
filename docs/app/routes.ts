@@ -5,6 +5,7 @@ export default [
   route("/llms-full.txt", "routes/llms-full.txt.ts"),
   route("/llms.txt", "routes/llms.txt.tsx"),
   route("playground", "routes/playground.tsx"),
+  route("showcase", "routes/showcase.tsx"),
   route("docs/*", "docs/page.tsx"),
   route("/og/docs/*", "docs/og.tsx"),
   route("api/search", "docs/search.ts"),

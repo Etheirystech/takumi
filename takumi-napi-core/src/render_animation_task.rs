@@ -8,7 +8,7 @@ use takumi::{
   },
 };
 
-use crate::renderer::AnimationOutputFormat;
+use crate::{map_error, renderer::AnimationOutputFormat};
 
 pub struct RenderAnimationTask<'g> {
   pub nodes: Option<Vec<(NodeKind, u32)>>,
@@ -23,12 +23,14 @@ impl Task for RenderAnimationTask<'_> {
   type JsValue = Buffer;
 
   fn compute(&mut self) -> Result<Self::Output> {
-    let nodes = self.nodes.take().unwrap();
+    let Some(nodes) = self.nodes.take() else {
+      unreachable!()
+    };
 
-    let frames: Vec<_> = nodes
+    let frames = nodes
       .into_par_iter()
       .map(|(node, duration_ms)| {
-        AnimationFrame::new(
+        Ok(AnimationFrame::new(
           render(
             RenderOptionsBuilder::default()
               .viewport(self.viewport)
@@ -36,13 +38,13 @@ impl Task for RenderAnimationTask<'_> {
               .global(self.context)
               .draw_debug_border(self.draw_debug_border)
               .build()
-              .unwrap(),
+              .map_err(map_error)?,
           )
-          .unwrap(),
+          .map_err(map_error)?,
           duration_ms,
-        )
+        ))
       })
-      .collect();
+      .collect::<Result<Vec<_>, _>>()?;
 
     let mut buffer = Vec::new();
 

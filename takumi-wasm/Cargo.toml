@@ -13,6 +13,7 @@ serde-wasm-bindgen = "0.6"
 wasm-bindgen = "0.2"
 base64 = "0.22"
 serde_bytes = "0.11"
+js-sys = "0.3.83"
 
 [dependencies.serde]
 version = "1.0"

@@ -22,8 +22,12 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  --color-fd-primary: #ff3535;
-  --color-fd-primary-foreground: white;
+  --primary: #ff3535;
+  --primary-foreground: white;
+  --border: hsla(0, 0%, 80%, 50%);
+  --ring: hsla(0, 0%, 80%, 50%);
+
+  --color-fd-primary: var(--primary);
 }
 
 .dark {
@@ -42,6 +46,11 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  --primary: #ff3535;
+  --primary-foreground: white;
+  --border: oklch(1 0 0 / 10%);
+  --ring: oklch(0.556 0 0);
 }
 
 @theme inline {
@@ -51,8 +60,8 @@
   --color-card-foreground: var(--color-fd-card-foreground);
   --color-popover: var(--color-fd-popover);
   --color-popover-foreground: var(--color-fd-popover-foreground);
-  --color-primary: var(--color-fd-primary);
-  --color-primary-foreground: var(--color-fd-primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--color-fd-secondary);
   --color-secondary-foreground: var(--color-fd-secondary-foreground);
   --color-muted: var(--color-fd-muted);
@@ -61,9 +70,9 @@
   --color-accent-foreground: var(--color-fd-accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--color-fd-border);
+  --color-border: var(--border);
   --color-input: var(--input);
-  --color-ring: var(--color-fd-ring);
+  --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);

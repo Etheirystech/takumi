@@ -6,10 +6,10 @@ import viteTsConfigPaths from "vite-tsconfig-paths";
 const config = defineConfig({
   plugins: [viteTsConfigPaths(), tanstackStart(), viteReact()],
   ssr: {
-    external: ["@takumi-rs/image-response"],
+    noExternal: ["@takumi-rs/core", "@takumi-rs/image-response"],
   },
   optimizeDeps: {
-    exclude: ["@takumi-rs/image-response"],
+    exclude: ["@takumi-rs/core"],
   },
 });
 

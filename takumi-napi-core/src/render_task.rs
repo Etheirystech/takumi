@@ -18,7 +18,7 @@ use takumi::{
 };
 
 use crate::{
-  ArrayBufferFn, MaybeInitialized, buffer_from_object,
+  ArrayBufferFn, MaybeInitialized, buffer_from_object, map_error,
   renderer::{OutputFormat, RenderOptions, ResourceCache},
 };
 
@@ -123,32 +123,35 @@ impl Task for RenderTask<'_> {
   type JsValue = Buffer;
 
   fn compute(&mut self) -> Result<Self::Output> {
-    let node = self.node.take().unwrap();
+    let Some(node) = self.node.take() else {
+      unreachable!()
+    };
 
     let resources: Vec<_> = self.tasks_rx.iter().collect();
 
+    let resource_cache = self.resource_cache.clone();
     let fetched_resources: HashMap<_, _> = resources
       .into_par_iter()
-      .filter_map(|(task, buffer)| {
-        Some((
-          task.clone(),
-          match buffer {
-            MaybeInitialized::Initialized(source) => source,
-            MaybeInitialized::Uninitialized(buffer) => {
-              let source = load_image_source_from_bytes(&buffer).ok()?;
+      .filter_map(|(task, buffer)| match buffer {
+        MaybeInitialized::Initialized(source) => Some(Ok((task, source))),
+        MaybeInitialized::Uninitialized(buffer) => {
+          let Ok(source) = load_image_source_from_bytes(&buffer) else {
+            return None;
+          };
 
-              if let Some(cache) = self.resource_cache.clone() {
-                let mut lock = cache.lock().unwrap();
+          if let Some(cache) = resource_cache.as_ref() {
+            let mut lock = match cache.lock() {
+              Ok(l) => l,
+              Err(e) => return Some(Err(map_error(e))),
+            };
 
-                lock.put(task, source.clone());
-              }
+            lock.put(task.clone(), source.clone());
+          }
 
-              source
-            }
-          },
-        ))
+          Some(Ok((task, source)))
+        }
       })
-      .collect();
+      .collect::<Result<HashMap<_, _>, _>>()?;
 
     let image = render(
       RenderOptionsBuilder::default()
@@ -158,9 +161,9 @@ impl Task for RenderTask<'_> {
         .global(self.global)
         .draw_debug_border(self.draw_debug_border)
         .build()
-        .unwrap(),
+        .map_err(map_error)?,
     )
-    .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    .map_err(map_error)?;
 
     if self.format == OutputFormat::raw {
       return Ok(image.into_raw());
@@ -168,8 +171,7 @@ impl Task for RenderTask<'_> {
 
     let mut buffer = Vec::new();
 
-    write_image(&image, &mut buffer, self.format.into(), self.quality)
-      .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+    write_image(&image, &mut buffer, self.format.into(), self.quality).map_err(map_error)?;
 
     Ok(buffer)
   }

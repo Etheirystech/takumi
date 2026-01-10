@@ -1,17 +1,20 @@
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+  clippy::module_name_repetitions,
+  clippy::missing_errors_doc,
+  clippy::missing_panics_doc,
+  clippy::must_use_candidate
+)]
+
 mod load_font_task;
 mod put_persistent_image_task;
 mod render_animation_task;
 mod render_task;
 mod renderer;
 
-use std::ops::Deref;
+use std::{fmt::Display, ops::Deref};
 
-use napi::{
-  De, Env, Error, JsString, JsValue, Result as NapiResult,
-  bindgen_prelude::{
-    ArrayBuffer, Buffer, BufferSlice, FromNapiValue, Function, Object, PromiseRaw,
-  },
-};
+use napi::{De, Env, Error, JsString, JsValue, bindgen_prelude::*};
 pub use renderer::Renderer;
 use serde::{Deserialize, Deserializer, de::DeserializeOwned};
 use takumi::parley::FontStyle;
@@ -49,7 +52,7 @@ pub(crate) enum MaybeInitialized<B, A> {
   Initialized(A),
 }
 
-fn buffer_from_object(env: Env, value: Object) -> NapiResult<Buffer> {
+fn buffer_from_object(env: Env, value: Object) -> Result<Buffer> {
   if let Ok(buffer) = unsafe { ArrayBuffer::from_napi_value(env.raw(), value.raw()) } {
     return Ok((*buffer).into());
   }
@@ -76,7 +79,7 @@ impl<'env> Deref for BufferOrSlice<'env> {
 pub(crate) fn buffer_slice_from_object<'env>(
   env: Env,
   value: Object,
-) -> NapiResult<BufferOrSlice<'env>> {
+) -> Result<BufferOrSlice<'env>> {
   if let Ok(buffer) = unsafe { ArrayBuffer::from_napi_value(env.raw(), value.raw()) } {
     return Ok(BufferOrSlice::ArrayBuffer(buffer));
   }
@@ -84,7 +87,11 @@ pub(crate) fn buffer_slice_from_object<'env>(
   unsafe { BufferSlice::from_napi_value(env.raw(), value.raw()).map(BufferOrSlice::Slice) }
 }
 
-pub(crate) fn deserialize_with_tracing<T: DeserializeOwned>(value: Object) -> NapiResult<T> {
+pub(crate) fn deserialize_with_tracing<T: DeserializeOwned>(value: Object) -> Result<T> {
   let mut de = De::new(&value);
   T::deserialize(&mut de).map_err(|e| Error::from_reason(e.to_string()))
+}
+
+pub(crate) fn map_error<E: Display>(err: E) -> napi::Error {
+  napi::Error::from_reason(err.to_string())
 }

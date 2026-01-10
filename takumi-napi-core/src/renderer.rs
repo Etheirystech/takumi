@@ -14,7 +14,7 @@ use takumi::{
 
 use crate::{
   FetchFn, FontInput, buffer_from_object, buffer_slice_from_object, deserialize_with_tracing,
-  load_font_task::LoadFontTask, put_persistent_image_task::PutPersistentImageTask,
+  load_font_task::LoadFontTask, map_error, put_persistent_image_task::PutPersistentImageTask,
   render_animation_task::RenderAnimationTask, render_task::RenderTask,
 };
 use std::{
@@ -132,7 +132,7 @@ const DEFAULT_RESOURCE_CACHE_CAPACITY: u32 = 8;
 #[napi]
 impl Renderer {
   #[napi(constructor)]
-  pub fn new(env: Env, options: Option<ConstructRendererOptions>) -> Self {
+  pub fn new(env: Env, options: Option<ConstructRendererOptions>) -> Result<Self> {
     let options = options.unwrap_or_default();
 
     let load_default_fonts = options
@@ -157,7 +157,7 @@ impl Renderer {
             }),
             Some(*generic),
           )
-          .unwrap();
+          .map_err(map_error)?;
       }
     }
 
@@ -167,14 +167,15 @@ impl Renderer {
           global
             .font_context_mut()
             .load_and_store(&buffer, None, None)
-            .unwrap();
+            .map_err(map_error)?;
 
           continue;
         }
 
-        let buffer =
-          buffer_slice_from_object(env, font.get_named_property("data").unwrap()).unwrap();
-        let font: FontInput = deserialize_with_tracing(font).unwrap();
+        let buffer = font
+          .get_named_property("data")
+          .and_then(|buffer| buffer_slice_from_object(env, buffer))?;
+        let font: FontInput = deserialize_with_tracing(font)?;
 
         let font_override = FontInfoOverride {
           family_name: font.name.as_deref(),
@@ -187,7 +188,7 @@ impl Renderer {
         global
           .font_context_mut()
           .load_and_store(&buffer, Some(font_override), None)
-          .unwrap();
+          .map_err(map_error)?;
       }
     }
 
@@ -195,7 +196,9 @@ impl Renderer {
       global,
       resources_cache: if resource_cache_capacity > 0 {
         Some(Arc::new(Mutex::new(LruCache::new(
-          NonZeroUsize::new(resource_cache_capacity as usize).unwrap(),
+          NonZeroUsize::new(resource_cache_capacity as usize).ok_or(Error::from_reason(
+            "Resource cache capacity must be greater than 0",
+          ))?,
         ))))
       } else {
         None
@@ -204,8 +207,8 @@ impl Renderer {
 
     if let Some(images) = options.persistent_images {
       for image in images {
-        let buffer = buffer_slice_from_object(env, image.data).unwrap();
-        let image_source = load_image_source_from_bytes(&buffer).unwrap();
+        let buffer = buffer_slice_from_object(env, image.data)?;
+        let image_source = load_image_source_from_bytes(&buffer).map_err(map_error)?;
 
         renderer
           .global
@@ -214,16 +217,18 @@ impl Renderer {
       }
     }
 
-    renderer
+    Ok(renderer)
   }
 
   #[napi]
-  pub fn purge_resources_cache(&self) {
+  pub fn purge_resources_cache(&self) -> Result<()> {
     if let Some(resource_cache) = self.resources_cache.as_ref() {
-      let mut lock = resource_cache.lock().unwrap();
+      let mut lock = resource_cache.lock().map_err(map_error)?;
 
       lock.clear();
     }
+
+    Ok(())
   }
 
   #[napi(
@@ -258,7 +263,7 @@ impl Renderer {
     env: Env,
     data: Object,
     signal: Option<AbortSignal>,
-  ) -> AsyncTask<LoadFontTask<'_>> {
+  ) -> Result<AsyncTask<LoadFontTask<'_>>> {
     self.load_fonts(env, vec![data], signal)
   }
 
@@ -271,28 +276,30 @@ impl Renderer {
     env: Env,
     fonts: Vec<Object>,
     signal: Option<AbortSignal>,
-  ) -> AsyncTask<LoadFontTask<'_>> {
+  ) -> Result<AsyncTask<LoadFontTask<'_>>> {
     let buffers = fonts
       .into_iter()
       .map(|font| {
         if let Ok(buffer) = buffer_from_object(env, font) {
-          (FontInput::default(), buffer)
+          Ok((FontInput::default(), buffer))
         } else {
-          let buffer = buffer_from_object(env, font.get_named_property("data").unwrap()).unwrap();
-          let font: FontInput = deserialize_with_tracing(font).unwrap();
+          let buffer = font
+            .get_named_property("data")
+            .and_then(|buffer| buffer_from_object(env, buffer))?;
+          let font: FontInput = deserialize_with_tracing(font).map_err(map_error)?;
 
-          (font, buffer)
+          Ok((font, buffer))
         }
       })
-      .collect();
+      .collect::<Result<Vec<_>>>()?;
 
-    AsyncTask::with_optional_signal(
+    Ok(AsyncTask::with_optional_signal(
       LoadFontTask {
         context: &mut self.global,
         buffers,
       },
       signal,
-    )
+    ))
   }
 
   #[napi]
@@ -337,13 +344,8 @@ impl Renderer {
   ) -> Result<AsyncTask<RenderAnimationTask<'_>>> {
     let nodes = source
       .into_iter()
-      .map(|frame| {
-        (
-          deserialize_with_tracing(frame.node).unwrap(),
-          frame.duration_ms,
-        )
-      })
-      .collect::<Vec<_>>();
+      .map(|frame| Ok((deserialize_with_tracing(frame.node)?, frame.duration_ms)))
+      .collect::<Result<Vec<_>>>()?;
 
     Ok(AsyncTask::with_optional_signal(
       RenderAnimationTask {

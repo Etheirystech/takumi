@@ -1,7 +1,12 @@
-use std::{
-  collections::HashMap,
-  sync::{Arc, Once},
-};
+#![deny(clippy::unwrap_used, clippy::expect_used)]
+#![allow(
+  clippy::module_name_repetitions,
+  clippy::missing_errors_doc,
+  clippy::missing_panics_doc,
+  clippy::must_use_candidate
+)]
+
+use std::{collections::HashMap, fmt::Display, sync::Arc};
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use serde::Deserialize;
@@ -99,9 +104,6 @@ extern "C" {
 
   #[wasm_bindgen(typescript_type = "Font")]
   pub type FontType;
-
-  #[wasm_bindgen(js_namespace = console, js_name = "error")]
-  fn console_error(msg: String);
 }
 
 #[derive(Deserialize, Default)]
@@ -184,6 +186,12 @@ impl From<FontStyle> for takumi::parley::FontStyle {
   }
 }
 
+fn map_error<E: Display>(err: E) -> js_sys::Error {
+  js_sys::Error::new(&err.to_string())
+}
+
+type JsResult<T> = Result<T, js_sys::Error>;
+
 #[wasm_bindgen]
 #[derive(Default)]
 pub struct Renderer {
@@ -194,14 +202,12 @@ pub struct Renderer {
 impl Renderer {
   #[wasm_bindgen(constructor)]
   pub fn new() -> Renderer {
-    panic_hook();
-
     Renderer::default()
   }
 
   #[wasm_bindgen(js_name = loadFont)]
-  pub fn load_font(&mut self, font: FontType) {
-    let input: Font = from_value(font.into()).unwrap();
+  pub fn load_font(&mut self, font: FontType) -> JsResult<()> {
+    let input: Font = from_value(font.into()).map_err(map_error)?;
 
     match input {
       Font::Buffer(buffer) => {
@@ -209,7 +215,7 @@ impl Renderer {
           .context
           .font_context_mut()
           .load_and_store(&buffer, None, None)
-          .unwrap();
+          .map_err(map_error)?;
       }
       Font::Object(details) => {
         self
@@ -226,19 +232,20 @@ impl Renderer {
             }),
             None,
           )
-          .unwrap();
+          .map_err(map_error)?;
       }
     }
+    Ok(())
   }
 
   #[wasm_bindgen(js_name = putPersistentImage)]
-  pub fn put_persistent_image(&self, src: String, data: &[u8]) {
-    self.context.persistent_image_store().insert(
-      src,
-      Arc::new(ImageSource::Bitmap(
-        load_from_memory(data).unwrap().into_rgba8(),
-      )),
-    );
+  pub fn put_persistent_image(&self, src: String, data: &[u8]) -> JsResult<()> {
+    let image = load_from_memory(data).map_err(map_error)?.into_rgba8();
+    self
+      .context
+      .persistent_image_store
+      .insert(src, Arc::new(ImageSource::Bitmap(image)));
+    Ok(())
   }
 
   #[wasm_bindgen(js_name = clearImageStore)]
@@ -247,44 +254,52 @@ impl Renderer {
   }
 
   #[wasm_bindgen]
-  pub fn render(&self, node: AnyNode, options: Option<RenderOptionsType>) -> Vec<u8> {
-    let node: NodeKind = from_value(node.into()).unwrap();
+  pub fn render(
+    &self,
+    node: AnyNode,
+    options: Option<RenderOptionsType>,
+  ) -> Result<Vec<u8>, JsValue> {
+    let node: NodeKind = from_value(node.into()).map_err(map_error)?;
     let options: RenderOptions = options
-      .map(|options| from_value(options.into()).unwrap())
+      .map(|options| from_value(options.into()).map_err(map_error))
+      .transpose()?
       .unwrap_or_default();
 
     self.render_internal(node, options)
   }
 
-  fn render_internal(&self, node: NodeKind, options: RenderOptions) -> Vec<u8> {
+  fn render_internal(&self, node: NodeKind, options: RenderOptions) -> Result<Vec<u8>, JsValue> {
     let fetched_resources = options
       .fetched_resources
-      .map(|resources| {
+      .map(|resources| -> Result<_, JsValue> {
         resources
           .into_iter()
-          .map(|(url, buffer)| (url, load_image_source_from_bytes(&buffer).unwrap()))
-          .collect()
+          .map(|(url, buffer)| {
+            let image = load_image_source_from_bytes(&buffer).map_err(map_error)?;
+            Ok((url, image))
+          })
+          .collect::<Result<_, JsValue>>()
       })
+      .transpose()?
       .unwrap_or_default();
 
-    let image = render(
-      RenderOptionsBuilder::default()
-        .viewport(Viewport {
-          width: options.width,
-          height: options.height,
-          font_size: DEFAULT_FONT_SIZE,
-          device_pixel_ratio: options
-            .device_pixel_ratio
-            .unwrap_or(DEFAULT_DEVICE_PIXEL_RATIO),
-        })
-        .draw_debug_border(options.draw_debug_border.unwrap_or_default())
-        .fetched_resources(fetched_resources)
-        .node(node)
-        .global(&self.context)
-        .build()
-        .unwrap(),
-    )
-    .unwrap();
+    let render_options = RenderOptionsBuilder::default()
+      .viewport(Viewport {
+        width: options.width,
+        height: options.height,
+        font_size: DEFAULT_FONT_SIZE,
+        device_pixel_ratio: options
+          .device_pixel_ratio
+          .unwrap_or(DEFAULT_DEVICE_PIXEL_RATIO),
+      })
+      .draw_debug_border(options.draw_debug_border.unwrap_or_default())
+      .fetched_resources(fetched_resources)
+      .node(node)
+      .global(&self.context)
+      .build()
+      .map_err(|e| JsValue::from_str(&format!("Failed to build render options: {e}")))?;
+
+    let image = render(render_options).map_err(map_error)?;
 
     let mut buffer = Vec::new();
 
@@ -294,18 +309,18 @@ impl Renderer {
       options.format.unwrap_or(ImageOutputFormat::Png),
       options.quality,
     )
-    .unwrap();
+    .map_err(map_error)?;
 
-    buffer
+    Ok(buffer)
   }
 
   #[wasm_bindgen(js_name = "renderAsDataUrl")]
-  pub fn render_as_data_url(&self, node: AnyNode, options: RenderOptionsType) -> String {
-    let node: NodeKind = from_value(node.into()).unwrap();
-    let options: RenderOptions = from_value(options.into()).unwrap();
+  pub fn render_as_data_url(&self, node: AnyNode, options: RenderOptionsType) -> JsResult<String> {
+    let node: NodeKind = from_value(node.into()).map_err(map_error)?;
+    let options: RenderOptions = from_value(options.into()).map_err(map_error)?;
 
     let format = options.format.unwrap_or(ImageOutputFormat::Png);
-    let buffer = self.render_internal(node, options);
+    let buffer = self.render_internal(node, options)?;
 
     let mut data_uri = String::new();
 
@@ -314,7 +329,7 @@ impl Renderer {
     data_uri.push_str(";base64,");
     data_uri.push_str(&BASE64_STANDARD.encode(buffer));
 
-    data_uri
+    Ok(data_uri)
   }
 
   #[wasm_bindgen(js_name = renderAnimation)]
@@ -322,74 +337,59 @@ impl Renderer {
     &self,
     frames: Vec<AnimationFrameSource>,
     options: RenderAnimationOptionsType,
-  ) -> Vec<u8> {
-    let options: RenderAnimationOptions = from_value(options.into()).unwrap();
+  ) -> Result<Vec<u8>, JsValue> {
+    let options: RenderAnimationOptions = from_value(options.into()).map_err(map_error)?;
 
     let rendered_frames: Vec<AnimationFrame> = frames
       .into_iter()
-      .map(|frame| {
-        let node: NodeKind = from_value(frame.node.into()).unwrap();
+      .map(|frame| -> Result<AnimationFrame, JsValue> {
+        let node: NodeKind = from_value(frame.node.into()).map_err(map_error)?;
         let duration_ms = frame.duration_ms;
 
-        let image = render(
-          RenderOptionsBuilder::default()
-            .viewport((options.width, options.height).into())
-            .node(node)
-            .global(&self.context)
-            .draw_debug_border(options.draw_debug_border.unwrap_or_default())
-            .build()
-            .unwrap(),
-        )
-        .unwrap();
-        AnimationFrame::new(image, duration_ms)
+        let render_options = RenderOptionsBuilder::default()
+          .viewport((options.width, options.height).into())
+          .node(node)
+          .global(&self.context)
+          .draw_debug_border(options.draw_debug_border.unwrap_or_default())
+          .build()
+          .map_err(|e| JsValue::from_str(&format!("Failed to build render options: {e}")))?;
+
+        let image = render(render_options).map_err(map_error)?;
+        Ok(AnimationFrame::new(image, duration_ms))
       })
-      .collect();
+      .collect::<Result<Vec<_>, JsValue>>()?;
 
     let mut buffer = Vec::new();
 
     match options.format.unwrap_or(AnimationOutputFormat::WebP) {
       AnimationOutputFormat::WebP => {
-        encode_animated_webp(&rendered_frames, &mut buffer, true, false, None).unwrap();
+        encode_animated_webp(&rendered_frames, &mut buffer, true, false, None)
+          .map_err(map_error)?;
       }
       AnimationOutputFormat::APng => {
-        encode_animated_png(&rendered_frames, &mut buffer, None).unwrap();
+        encode_animated_png(&rendered_frames, &mut buffer, None).map_err(map_error)?;
       }
     }
 
-    buffer
+    Ok(buffer)
   }
 }
 
 /// Collects the fetch task urls from the node.
 #[wasm_bindgen(js_name = collectNodeFetchTasks)]
-pub fn collect_node_fetch_tasks(node: AnyNode) -> Vec<String> {
-  panic_hook();
-
-  let node: NodeKind = from_value(node.into()).unwrap();
+pub fn collect_node_fetch_tasks(node: AnyNode) -> JsResult<Vec<String>> {
+  let node: NodeKind = from_value(node.into()).map_err(map_error)?;
 
   let mut collection = FetchTaskCollection::default();
 
   node.collect_fetch_tasks(&mut collection);
   node.collect_style_fetch_tasks(&mut collection);
 
-  collection
-    .into_inner()
-    .iter()
-    .map(|task| task.to_string())
-    .collect()
-}
-
-static PANIC_HOOK_ONCE: Once = Once::new();
-
-fn panic_hook() {
-  PANIC_HOOK_ONCE.call_once(|| {
-    std::panic::set_hook(Box::new(|info| {
-      let mut message = info.to_string();
-
-      // https://github.com/rustwasm/console_error_panic_hook/blob/master/src/lib.rs#L119
-      message.push_str("\r\n");
-
-      console_error(message);
-    }));
-  });
+  Ok(
+    collection
+      .into_inner()
+      .iter()
+      .map(|task| task.to_string())
+      .collect(),
+  )
 }

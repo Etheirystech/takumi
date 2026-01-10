@@ -1,5 +1,7 @@
-use napi::{Task, bindgen_prelude::Buffer};
+use napi::bindgen_prelude::*;
 use takumi::resources::image::{PersistentImageStore, load_image_source_from_bytes};
+
+use crate::map_error;
 
 pub struct PutPersistentImageTask<'s> {
   pub src: Option<String>,
@@ -11,9 +13,13 @@ impl Task for PutPersistentImageTask<'_> {
   type Output = ();
   type JsValue = ();
 
-  fn compute(&mut self) -> napi::Result<Self::Output> {
-    let image = load_image_source_from_bytes(&self.buffer).unwrap();
-    self.store.insert(self.src.take().unwrap(), image);
+  fn compute(&mut self) -> Result<Self::Output> {
+    let Some(src) = self.src.take() else {
+      unreachable!()
+    };
+
+    let image = load_image_source_from_bytes(&self.buffer).map_err(map_error)?;
+    self.store.insert(src, image);
 
     Ok(())
   }

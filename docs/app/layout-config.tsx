@@ -21,6 +21,10 @@ export const baseOptions: BaseLayoutProps = {
       url: "/playground",
     },
     {
+      text: "Showcase",
+      url: "/showcase",
+    },
+    {
       text: "For LLMs",
       type: "menu",
       items: [
