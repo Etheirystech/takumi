@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
+<rect x="0" y="0" width="1200" height="630" fill="rgba(255,255,255,1)"/>
+<g transform="matrix(1,0,0,1,500,215)">
+  <rect x="0" y="0" width="200" height="200" fill="rgba(255,0,0,0.11764706)" rx="12"/>
+</g>
+<rect x="1" y="1" width="198" height="198" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" rx="12" transform="matrix(1,0,0,1,500,215)"/>
+<g transform="matrix(1,0,0,1,500,215)">
+  <image href="assets/images/yeecord.png" x="0" y="0" width="200" height="200"/>
+</g>
+<g transform="matrix(0.70710677,0.70710677,-0.70710677,0.70710677,500,215)">
+  <rect x="0" y="0" width="200" height="200" fill="rgba(255,0,0,0.11764706)" rx="12"/>
+</g>
+<rect x="1" y="1" width="198" height="198" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" rx="12" transform="matrix(0.70710677,0.70710677,-0.70710677,0.70710677,500,215)"/>
+<g transform="matrix(0.70710677,0.70710677,-0.70710677,0.70710677,500,215)">
+  <image href="assets/images/yeecord.png" x="0" y="0" width="200" height="200"/>
+</g>
+<g transform="matrix(-0.00000004371139,1,-1,-0.00000004371139,500,215)">
+  <rect x="0" y="0" width="200" height="200" fill="rgba(255,0,0,0.11764706)" rx="12"/>
+</g>
+<rect x="1" y="1" width="198" height="198" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" rx="12" transform="matrix(-0.00000004371139,1,-1,-0.00000004371139,500,215)"/>
+<g transform="matrix(-0.00000004371139,1,-1,-0.00000004371139,500,215)">
+  <image href="assets/images/yeecord.png" x="0" y="0" width="200" height="200"/>
+</g>
+<g transform="matrix(-0.70710677,0.70710677,-0.70710677,-0.70710677,500,215)">
+  <rect x="0" y="0" width="200" height="200" fill="rgba(255,0,0,0.11764706)" rx="12"/>
+</g>
+<rect x="1" y="1" width="198" height="198" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" rx="12" transform="matrix(-0.70710677,0.70710677,-0.70710677,-0.70710677,500,215)"/>
+<g transform="matrix(-0.70710677,0.70710677,-0.70710677,-0.70710677,500,215)">
+  <image href="assets/images/yeecord.png" x="0" y="0" width="200" height="200"/>
+</g>
+<g transform="matrix(-1,-0.00000008742278,0.00000008742278,-1,500,215)">
+  <rect x="0" y="0" width="200" height="200" fill="rgba(255,0,0,0.11764706)" rx="12"/>
+</g>
+<rect x="1" y="1" width="198" height="198" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" rx="12" transform="matrix(-1,-0.00000008742278,0.00000008742278,-1,500,215)"/>
+<g transform="matrix(-1,-0.00000008742278,0.00000008742278,-1,500,215)">
+  <image href="assets/images/yeecord.png" x="0" y="0" width="200" height="200"/>
+</g>
+<g transform="matrix(-0.7071068,-0.7071067,0.7071067,-0.7071068,500,215)">
+  <rect x="0" y="0" width="200" height="200" fill="rgba(255,0,0,0.11764706)" rx="12"/>
+</g>
+<rect x="1" y="1" width="198" height="198" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" rx="12" transform="matrix(-0.7071068,-0.7071067,0.7071067,-0.7071068,500,215)"/>
+<g transform="matrix(-0.7071068,-0.7071067,0.7071067,-0.7071068,500,215)">
+  <image href="assets/images/yeecord.png" x="0" y="0" width="200" height="200"/>
+</g>
+<g transform="matrix(0.000000011924881,-1,1,0.000000011924881,500,215)">
+  <rect x="0" y="0" width="200" height="200" fill="rgba(255,0,0,0.11764706)" rx="12"/>
+</g>
+<rect x="1" y="1" width="198" height="198" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" rx="12" transform="matrix(0.000000011924881,-1,1,0.000000011924881,500,215)"/>
+<g transform="matrix(0.000000011924881,-1,1,0.000000011924881,500,215)">
+  <image href="assets/images/yeecord.png" x="0" y="0" width="200" height="200"/>
+</g>
+<g transform="matrix(0.70710665,-0.7071069,0.7071069,0.70710665,500,215)">
+  <rect x="0" y="0" width="200" height="200" fill="rgba(255,0,0,0.11764706)" rx="12"/>
+</g>
+<rect x="1" y="1" width="198" height="198" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" rx="12" transform="matrix(0.70710665,-0.7071069,0.7071069,0.70710665,500,215)"/>
+<g transform="matrix(0.70710665,-0.7071069,0.7071069,0.70710665,500,215)">
+  <image href="assets/images/yeecord.png" x="0" y="0" width="200" height="200"/>
+</g>
+</svg>

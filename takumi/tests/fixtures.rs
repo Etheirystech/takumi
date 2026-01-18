@@ -46,5 +46,7 @@ pub mod style_transform;
 pub mod style_visuals;
 #[path = "fixtures/svg.rs"]
 pub mod svg;
+#[path = "fixtures/svg_output.rs"]
+pub mod svg_output;
 #[path = "fixtures/text.rs"]
 pub mod text;

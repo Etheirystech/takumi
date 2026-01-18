@@ -26,6 +26,9 @@ pub enum ImageOutputFormat {
 
   /// JPEG image format, lossy and does not support transparency.
   Jpeg,
+
+  /// SVG vector format, scalable and suitable for text-heavy graphics.
+  Svg,
 }
 
 impl ImageOutputFormat {
@@ -35,6 +38,7 @@ impl ImageOutputFormat {
       ImageOutputFormat::WebP => "image/webp",
       ImageOutputFormat::Png => "image/png",
       ImageOutputFormat::Jpeg => "image/jpeg",
+      ImageOutputFormat::Svg => "image/svg+xml",
     }
   }
 }
@@ -45,6 +49,7 @@ impl From<ImageOutputFormat> for ImageFormat {
       ImageOutputFormat::WebP => Self::WebP,
       ImageOutputFormat::Png => Self::Png,
       ImageOutputFormat::Jpeg => Self::Jpeg,
+      ImageOutputFormat::Svg => Self::Png,
     }
   }
 }
@@ -328,8 +333,17 @@ pub fn write_image<T: Write>(
         },
       )?;
     }
+    ImageOutputFormat::Svg => {
+      unreachable!("SVG output requires using SvgRenderer, not write_image() with RgbaImage");
+    }
   }
 
+  Ok(())
+}
+
+/// Writes SVG content to `destination`.
+pub fn write_svg<T: Write>(svg_content: &str, destination: &mut T) -> Result<(), crate::Error> {
+  destination.write_all(svg_content.as_bytes())?;
   Ok(())
 }
 

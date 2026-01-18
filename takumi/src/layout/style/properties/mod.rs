@@ -20,7 +20,8 @@ mod font_feature_settings;
 mod font_style;
 mod font_variation_settings;
 mod font_weight;
-mod gradient_utils;
+/// Gradient utilities for resolving and sampling gradients.
+pub mod gradient_utils;
 mod grid;
 mod length;
 mod line_clamp;

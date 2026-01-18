@@ -10,8 +10,11 @@ mod image_drawing;
 pub(crate) mod inline_drawing;
 /// Main image renderer and viewport management
 mod render;
+/// SVG renderer
+pub mod renderer;
 /// Text drawing functions
-mod text_drawing;
+pub mod text_drawing;
+pub use renderer::*;
 mod write;
 
 use std::{collections::HashMap, sync::Arc};

@@ -129,7 +129,8 @@ pub(crate) fn adaptive_lut_size(axis_length: f32) -> usize {
 
 const UNDEFINED_POSITION: f32 = -1.0;
 
-pub(crate) fn resolve_stops_along_axis(
+/// Resolves gradient stops along an axis.
+pub fn resolve_stops_along_axis(
   stops: &[GradientStop],
   axis_size_px: f32,
   context: &RenderContext,

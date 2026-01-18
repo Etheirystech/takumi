@@ -124,7 +124,8 @@ pub(crate) fn resolve_background_size(
       let (intrinsic_width, intrinsic_height) = if let BackgroundImage::Url(url) = image
         && let Ok(source) = resolve_image(url, context)
       {
-        source.size()
+        let (w, h) = source.size();
+        (w, h)
       } else {
         return (0, 0);
       };
@@ -134,8 +135,8 @@ pub(crate) fn resolve_background_size(
       }
 
       // Calculate scale factors for both dimensions
-      let scale_x = area.0 as f32 / intrinsic_width;
-      let scale_y = area.1 as f32 / intrinsic_height;
+      let scale_x: f32 = area.0 as f32 / intrinsic_width;
+      let scale_y: f32 = area.1 as f32 / intrinsic_height;
 
       // Use the larger scale to ensure the image covers the entire area
       let scale = scale_x.max(scale_y);
@@ -150,7 +151,8 @@ pub(crate) fn resolve_background_size(
       let (intrinsic_width, intrinsic_height) = if let BackgroundImage::Url(url) = image
         && let Ok(source) = resolve_image(url, context)
       {
-        source.size()
+        let (w, h) = source.size();
+        (w, h)
       } else {
         return (0, 0);
       };
@@ -160,8 +162,8 @@ pub(crate) fn resolve_background_size(
       }
 
       // Calculate scale factors for both dimensions
-      let scale_x = area.0 as f32 / intrinsic_width;
-      let scale_y = area.1 as f32 / intrinsic_height;
+      let scale_x: f32 = area.0 as f32 / intrinsic_width;
+      let scale_y: f32 = area.1 as f32 / intrinsic_height;
 
       // Use the smaller scale to ensure the image is fully contained
       let scale = scale_x.min(scale_y);
@@ -241,9 +243,10 @@ pub(crate) fn render_tile(
     ))),
     BackgroundImage::Url(url) => {
       if let Ok(source) = resolve_image(url, context) {
+        let (w, h) = (tile_w, tile_h);
         Some(BackgroundTile::Image(
           source
-            .render_to_rgba_image(tile_w, tile_h, context.style.image_rendering)?
+            .render_to_rgba_image(w, h, context.style.image_rendering)?
             .into_owned(),
         ))
       } else {

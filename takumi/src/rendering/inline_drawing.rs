@@ -2,6 +2,7 @@ use image::{GenericImageView, Rgba};
 use parley::{GlyphRun, LineMetrics, PositionedInlineBox, PositionedLayoutItem};
 use swash::FontRef;
 use taffy::{Layout, Point};
+use zeno::PathData;
 
 use crate::{
   Result,
@@ -11,8 +12,8 @@ use crate::{
     style::{Affine, BackgroundClip, SizedFontStyle, TextDecorationLine},
   },
   rendering::{
-    BorderProperties, Canvas, RenderContext, collect_background_layers, draw_decoration,
-    draw_glyph, draw_glyph_clip_image, rasterize_layers,
+    BorderProperties, Canvas, RenderContext, SvgRenderer, collect_background_layers,
+    draw_decoration, draw_glyph, draw_glyph_clip_image, rasterize_layers,
   },
   resources::font::FontError,
 };
@@ -209,4 +210,72 @@ pub(crate) fn draw_inline_layout(
 // https://github.com/linebender/parley/blob/d7ed9b1ec844fa5a9ed71b84552c603dae3cab18/parley/src/layout/line.rs#L261C28-L261C61
 pub(crate) fn fix_inline_box_y(y: &mut f32, metrics: &LineMetrics) {
   *y += metrics.line_height - metrics.baseline;
+}
+
+pub(crate) fn draw_inline_layout_svg(
+  context: &RenderContext,
+  svg: &mut SvgRenderer,
+  layout: Layout,
+  inline_layout: InlineLayout,
+  _font_style: &SizedFontStyle,
+) -> Result<()> {
+  for line in inline_layout.lines() {
+    for item in line.items() {
+      match item {
+        PositionedLayoutItem::GlyphRun(glyph_run) => {
+          let run = glyph_run.run();
+          let font = FontRef::from_index(run.font().data.as_ref(), run.font().index as usize)
+            .ok_or(FontError::InvalidFontIndex)?;
+
+          let glyph_ids = glyph_run.positioned_glyphs().map(|glyph| glyph.id);
+          let resolved_glyphs = context
+            .global
+            .font_context
+            .resolve_glyphs(run, font, glyph_ids);
+
+          for glyph in glyph_run.positioned_glyphs() {
+            if let Some(cached_glyph) = resolved_glyphs.get(&glyph.id) {
+              match cached_glyph {
+                crate::resources::font::ResolvedGlyph::Outline(outline) => {
+                  let commands = outline
+                    .path()
+                    .commands()
+                    .map(|cmd| match cmd {
+                      zeno::Command::MoveTo(p) => zeno::Command::MoveTo((p.x, -p.y).into()),
+                      zeno::Command::LineTo(p) => zeno::Command::LineTo((p.x, -p.y).into()),
+                      zeno::Command::QuadTo(p1, p2) => {
+                        zeno::Command::QuadTo((p1.x, -p1.y).into(), (p2.x, -p2.y).into())
+                      }
+                      zeno::Command::CurveTo(p1, p2, p3) => zeno::Command::CurveTo(
+                        (p1.x, -p1.y).into(),
+                        (p2.x, -p2.y).into(),
+                        (p3.x, -p3.y).into(),
+                      ),
+                      zeno::Command::Close => zeno::Command::Close,
+                    })
+                    .collect::<Vec<_>>();
+
+                  let transform = context.transform
+                    * Affine::translation(
+                      layout.border.left + layout.padding.left + glyph.x,
+                      layout.border.top + layout.padding.top + glyph.y,
+                    );
+
+                  svg.draw_text(&commands, glyph_run.style().brush.color, transform);
+                }
+                crate::resources::font::ResolvedGlyph::Image(_) => {
+                  // TODO: Handle bitmap glyphs in SVG
+                }
+              }
+            }
+          }
+        }
+        PositionedLayoutItem::InlineBox(_) => {
+          // TODO: Handle inline boxes in SVG
+        }
+      }
+    }
+  }
+
+  Ok(())
 }

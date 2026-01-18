@@ -13,7 +13,7 @@ use takumi::{
   layout::{Viewport, node::NodeKind},
   rendering::{
     AnimationFrame, ImageOutputFormat, RenderOptionsBuilder, encode_animated_png,
-    encode_animated_webp, render, write_image,
+    encode_animated_webp, render, render_to_svg, write_image,
   },
   resources::image::{ImageSource, parse_svg_str},
 };
@@ -124,16 +124,17 @@ pub static CONTEXT: LazyLock<GlobalContext> = LazyLock::new(create_test_context)
 #[allow(dead_code)]
 pub fn run_fixture_test(node: NodeKind, fixture_name: &str) {
   let viewport = create_test_viewport();
+  let options = RenderOptionsBuilder::default()
+    .viewport(viewport)
+    .node(node)
+    .global(&CONTEXT)
+    .build()
+    .unwrap();
 
-  let image = render(
-    RenderOptionsBuilder::default()
-      .viewport(viewport)
-      .node(node)
-      .global(&CONTEXT)
-      .build()
-      .unwrap(),
-  )
-  .unwrap();
+  let image = render(options.clone()).unwrap();
+  let png_path = format!("tests/fixtures-generated/{}.png", base_name);
+  let mut png_file = File::create(png_path).unwrap();
+  write_image(&image, &mut png_file, ImageOutputFormat::Png, Some(75)).unwrap();
 
   let fixture_path = format!("tests/fixtures-generated/{}.webp", fixture_name);
   let path = Path::new(&fixture_path);
@@ -141,6 +142,13 @@ pub fn run_fixture_test(node: NodeKind, fixture_name: &str) {
   let mut file = File::create(path).unwrap();
 
   write_image(&image, &mut file, ImageOutputFormat::WebP, None).unwrap();
+
+  let svg = render_to_svg(options).unwrap();
+  let svg_path = format!("tests/fixtures-generated/{}.svg", base_name);
+
+  let mut svg_file = File::create(svg_path).unwrap();
+
+  svg_file.write_all(svg.as_bytes()).unwrap();
 }
 
 #[allow(dead_code)]

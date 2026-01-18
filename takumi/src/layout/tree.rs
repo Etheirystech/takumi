@@ -13,8 +13,9 @@ use crate::{
     style::{Affine, Display, InheritedStyle},
   },
   rendering::{
-    Canvas, MaxHeight, RenderContext, Sizing,
+    BorderProperties, Canvas, MaxHeight, RenderContext, Sizing,
     inline_drawing::{draw_inline_box, draw_inline_layout},
+    renderer::SvgRenderer,
   },
 };
 
@@ -40,6 +41,42 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
   pub(crate) fn draw_content(&self, canvas: &mut Canvas, layout: Layout) -> Result<()> {
     if let Some(node) = &self.node {
       node.draw_content(&self.context, canvas, layout)?;
+    }
+    Ok(())
+  }
+
+  pub(crate) fn draw_shell_svg(&self, svg: &mut SvgRenderer, layout: Layout) -> Result<()> {
+    let Some(node) = &self.node else {
+      return Ok(());
+    };
+
+    let transform = self.context.transform;
+    let size = layout.size;
+    let border = BorderProperties::from_context(&self.context, size, layout.border);
+
+    node.draw_outset_box_shadow_svg(&self.context, svg, layout)?;
+
+    let bg_color = self
+      .context
+      .style
+      .background_color()
+      .resolve(self.context.current_color);
+    if bg_color.0[3] > 0 {
+      svg.draw_background_color(size, bg_color, border, transform);
+    }
+
+    node.draw_background_image_svg(&self.context, svg, layout)?;
+
+    node.draw_inset_box_shadow_svg(&self.context, svg, layout)?;
+
+    svg.draw_border(size, border, transform);
+
+    Ok(())
+  }
+
+  pub(crate) fn draw_content_svg(&self, svg: &mut SvgRenderer, layout: Layout) -> Result<()> {
+    if let Some(node) = &self.node {
+      node.draw_content_svg(&self.context, svg, layout)?;
     }
     Ok(())
   }

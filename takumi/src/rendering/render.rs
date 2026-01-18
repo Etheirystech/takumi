@@ -4,7 +4,7 @@ use derive_builder::Builder;
 use image::RgbaImage;
 use parley::PositionedLayoutItem;
 use serde::Serialize;
-use taffy::{AvailableSpace, NodeId, TaffyError, TaffyTree, geometry::Size};
+use taffy::{AvailableSpace, NodeId, Rect, TaffyError, TaffyTree, geometry::Size};
 
 use crate::{
   GlobalContext,
@@ -13,14 +13,14 @@ use crate::{
     inline::{InlineLayoutStage, create_inline_constraint, create_inline_layout},
     node::Node,
     style::{
-      Affine, Display, Filter, ImageScalingAlgorithm, InheritedStyle, SpacePair,
+      Affine, Color, Display, Filter, ImageScalingAlgorithm, InheritedStyle, SpacePair,
       apply_backdrop_filter, apply_filters,
     },
     tree::NodeTree,
   },
   rendering::{
     BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, RenderContext, Sizing,
-    draw_debug_border, inline_drawing::fix_inline_box_y, overlay_image,
+    SvgRenderer, draw_debug_border, inline_drawing::fix_inline_box_y, overlay_image,
   },
   resources::image::ImageSource,
 };
@@ -415,4 +415,125 @@ fn render_node<'g, Nodes: Node<Nodes>>(
   }
 
   Ok(())
+}
+
+/// Renders a node to an SVG string.
+pub fn render_to_svg<'g, N: Node<N>>(
+  options: RenderOptions<'g, N>,
+) -> Result<String, crate::Error> {
+  let mut taffy = TaffyTree::new();
+
+  let render_context = RenderContext {
+    draw_debug_border: options.draw_debug_border,
+    ..RenderContext::new(options.global, options.viewport, options.fetched_resources)
+  };
+
+  let tree = NodeTree::from_node(&render_context, options.node);
+
+  let root_node_id = tree.insert_into_taffy(&mut taffy)?;
+
+  taffy.compute_layout_with_measure(
+    root_node_id,
+    render_context.sizing.viewport.into(),
+    |known_dimensions, available_space, _node_id, node_context, style| {
+      if let Size {
+        width: Some(width),
+        height: Some(height),
+      } = known_dimensions.maybe_apply_aspect_ratio(style.aspect_ratio)
+      {
+        Size { width, height }
+      } else if let Some(context) = node_context {
+        context.measure(available_space, known_dimensions, style)
+      } else {
+        Size::ZERO
+      }
+    },
+  )?;
+
+  let root_size = taffy
+    .layout(root_node_id)?
+    .size
+    .map(|size| size.round() as u32);
+
+  if root_size.width == 0 || root_size.height == 0 {
+    return Err(crate::Error::InvalidViewport);
+  }
+
+  let root_size = root_size.zip_map(options.viewport.into(), |size, viewport| {
+    if let AvailableSpace::Definite(defined) = viewport {
+      defined as u32
+    } else {
+      size
+    }
+  });
+
+  let mut svg = SvgRenderer::new(root_size.width, root_size.height);
+  svg.write_svg_header();
+
+  render_node_svg(&mut taffy, root_node_id, &mut svg, Affine::IDENTITY)?;
+
+  svg.write_svg_footer();
+
+  Ok(svg.into_string())
+}
+
+fn render_node_svg<'g, Nodes: Node<Nodes>>(
+  taffy: &mut TaffyTree<NodeTree<'g, Nodes>>,
+  node_id: NodeId,
+  svg: &mut SvgRenderer,
+  mut transform: Affine,
+) -> Result<(), crate::Error> {
+  let layout = *taffy.layout(node_id)?;
+
+  let Some(node) = taffy.get_node_context_mut(node_id) else {
+    return Err(TaffyError::InvalidInputNode(node_id).into());
+  };
+
+  if node.context.style.opacity.0 == 0.0 || node.context.style.display == Display::None {
+    return Ok(());
+  }
+
+  transform *= Affine::translation(layout.location.x, layout.location.y);
+
+  apply_transform(
+    &mut transform,
+    &node.context.style,
+    layout.size,
+    &node.context.sizing,
+  );
+
+  if !transform.is_invertible() {
+    return Ok(());
+  }
+
+  node.context.transform = transform;
+
+  node.draw_shell_svg(svg, layout)?;
+  node.draw_content_svg(svg, layout)?;
+
+  if node.context.draw_debug_border {
+    draw_debug_border_svg(svg, layout, transform);
+  }
+
+  let has_children = node.node.is_some();
+
+  if has_children {
+    for child_id in taffy.children(node_id)? {
+      render_node_svg(taffy, child_id, svg, transform)?;
+    }
+  }
+
+  Ok(())
+}
+
+fn draw_debug_border_svg(svg: &mut SvgRenderer, layout: taffy::Layout, transform: Affine) {
+  let color = Color([255, 0, 0, 255]);
+  let debug_border = BorderProperties {
+    width: Rect::new(2.0, 2.0, 2.0, 2.0),
+    color,
+    radius: Default::default(),
+    image_rendering: ImageScalingAlgorithm::Auto,
+  };
+
+  svg.draw_border(layout.size, debug_border, transform);
 }

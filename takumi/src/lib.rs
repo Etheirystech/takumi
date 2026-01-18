@@ -33,7 +33,7 @@
 //!     Viewport,
 //!     style::Style,
 //!   },
-//!   rendering::{render, RenderOptionsBuilder},
+//! rendering::{render, render_to_svg, RenderOptionsBuilder},
 //!   GlobalContext,
 //! };
 //!

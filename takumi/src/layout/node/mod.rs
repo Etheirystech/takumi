@@ -3,19 +3,21 @@ mod image;
 mod text;
 
 pub use container::*;
-pub use image::*;
+pub use image::{ImageNode, resolve_image};
 pub use text::*;
 
-use serde::Deserialize;
-use taffy::{AvailableSpace, Layout, Point, Size};
-use zeno::Fill;
+use std::borrow::Cow;
 
+use serde::Deserialize;
+use taffy::{AvailableSpace, Layout, Size};
+
+pub use crate::layout::style::gradient_utils::resolve_stops_along_axis;
 use crate::{
   Result,
   layout::{
     Viewport,
     inline::InlineContentKind,
-    style::{Affine, BackgroundClip, BackgroundImage, CssValue, InheritedStyle, Sides, Style},
+    style::{Affine, BackgroundClip, BackgroundImage, Color, CssValue, InheritedStyle, Style},
   },
   rendering::{
     BorderProperties, Canvas, RenderContext, SizedShadow, collect_background_layers,
@@ -70,6 +72,12 @@ macro_rules! impl_node_enum {
         }
       }
 
+      fn draw_content_svg(&self, context: &$crate::rendering::RenderContext, svg: &mut $crate::rendering::SvgRenderer, layout: $crate::taffy::Layout) -> $crate::Result<()> {
+        match self {
+          $( $name::$variant(inner) => <_ as $crate::layout::node::Node<$name>>::draw_content_svg(inner, context, svg, layout), )*
+        }
+      }
+
       fn draw_border(&self, context: &$crate::rendering::RenderContext, canvas: &mut $crate::rendering::Canvas, layout: $crate::taffy::Layout) -> $crate::Result<()> {
         match self {
           $( $name::$variant(inner) => <_ as $crate::layout::node::Node<$name>>::draw_border(inner, context, canvas, layout), )*
@@ -82,9 +90,21 @@ macro_rules! impl_node_enum {
         }
       }
 
+      fn draw_outset_box_shadow_svg(&self, context: &$crate::rendering::RenderContext, svg: &mut $crate::rendering::SvgRenderer, layout: $crate::taffy::Layout) -> $crate::Result<()> {
+        match self {
+          $( $name::$variant(inner) => <_ as $crate::layout::node::Node<$name>>::draw_outset_box_shadow_svg(inner, context, svg, layout), )*
+        }
+      }
+
       fn draw_inset_box_shadow(&self, context: &$crate::rendering::RenderContext, canvas: &mut $crate::rendering::Canvas, layout: $crate::taffy::Layout) -> $crate::Result<()> {
         match self {
           $( $name::$variant(inner) => <_ as $crate::layout::node::Node<$name>>::draw_inset_box_shadow(inner, context, canvas, layout), )*
+        }
+      }
+
+      fn draw_inset_box_shadow_svg(&self, context: &$crate::rendering::RenderContext, svg: &mut $crate::rendering::SvgRenderer, layout: $crate::taffy::Layout) -> $crate::Result<()> {
+        match self {
+          $( $name::$variant(inner) => <_ as $crate::layout::node::Node<$name>>::draw_inset_box_shadow_svg(inner, context, svg, layout), )*
         }
       }
 
@@ -109,6 +129,12 @@ macro_rules! impl_node_enum {
       fn draw_background(&self, context: &$crate::rendering::RenderContext, canvas: &mut $crate::rendering::Canvas, layout: $crate::taffy::Layout) -> $crate::Result<()> {
         match self {
           $( $name::$variant(inner) => <_ as $crate::layout::node::Node<$name>>::draw_background(inner, context, canvas, layout), )*
+        }
+      }
+
+      fn draw_background_image_svg(&self, context: &$crate::rendering::RenderContext, svg: &mut $crate::rendering::SvgRenderer, layout: $crate::taffy::Layout) -> $crate::Result<()> {
+        match self {
+          $( $name::$variant(inner) => <_ as $crate::layout::node::Node<$name>>::draw_background_image_svg(inner, context, svg, layout), )*
         }
       }
     }
@@ -231,8 +257,19 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
   /// Draws the outset box shadow of the node.
   fn draw_outset_box_shadow(
     &self,
+    _context: &RenderContext,
+    _canvas: &mut Canvas,
+    _layout: Layout,
+  ) -> Result<()> {
+    // Default implementation does nothing
+    Ok(())
+  }
+
+  /// Draws the outset box shadow of the node as SVG.
+  fn draw_outset_box_shadow_svg(
+    &self,
     context: &RenderContext,
-    canvas: &mut Canvas,
+    svg: &mut crate::rendering::SvgRenderer,
     layout: Layout,
   ) -> Result<()> {
     let Some(box_shadow) = context.style.box_shadow.as_ref() else {
@@ -246,35 +283,28 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
         continue;
       }
 
-      let mut paths = Vec::new();
-
-      let mut border_radius = border_radius;
-      let resolved_spread_radius = shadow
-        .spread_radius
-        .to_px(&context.sizing, layout.size.width)
-        .max(0.0);
-
-      border_radius.expand_by(Sides([resolved_spread_radius; 4]).into());
-
       let shadow =
         SizedShadow::from_box_shadow(*shadow, &context.sizing, context.current_color, layout.size);
 
-      border_radius.append_mask_commands(
-        &mut paths,
-        layout.size,
-        Point {
-          x: -shadow.spread_radius,
-          y: -shadow.spread_radius,
-        },
+      let color = format!(
+        "rgba({},{},{},{})",
+        shadow.color.0[0],
+        shadow.color.0[1],
+        shadow.color.0[2],
+        shadow.color.0[3] as f32 / 255.0
       );
 
-      shadow.draw_outset(
-        &mut canvas.image,
-        &mut canvas.mask_memory,
-        canvas.constrains.last(),
-        &paths,
+      let filter =
+        svg.add_shadow_filter(shadow.offset_x, shadow.offset_y, shadow.blur_radius, &color);
+
+      // Use an opaque fill for the shadow source rect so feGaussianBlur in="SourceAlpha" works,
+      // but the filter itself only outputs the shadow (not the source graphic).
+      svg.fill_rect_with_filter(
+        layout.size,
+        Color::black(),
+        &filter,
+        border_radius,
         context.transform,
-        Fill::EvenOdd.into(),
       );
     }
 
@@ -284,27 +314,22 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
   /// Draws the inset box shadow of the node.
   fn draw_inset_box_shadow(
     &self,
-    context: &RenderContext,
-    canvas: &mut Canvas,
-    layout: Layout,
+    _context: &RenderContext,
+    _canvas: &mut Canvas,
+    _layout: Layout,
   ) -> Result<()> {
-    if let Some(box_shadow) = context.style.box_shadow.as_ref() {
-      let border_radius = BorderProperties::from_context(context, layout.size, layout.border);
+    // Default implementation does nothing
+    Ok(())
+  }
 
-      for shadow in box_shadow.iter() {
-        if !shadow.inset {
-          continue;
-        }
-
-        let shadow = SizedShadow::from_box_shadow(
-          *shadow,
-          &context.sizing,
-          context.current_color,
-          layout.size,
-        );
-        shadow.draw_inset(context.transform, border_radius, canvas, layout);
-      }
-    }
+  /// Draws the inset box shadow of the node as SVG.
+  fn draw_inset_box_shadow_svg(
+    &self,
+    _context: &RenderContext,
+    _svg: &mut crate::rendering::SvgRenderer,
+    _layout: Layout,
+  ) -> Result<()> {
+    // TODO: Implement inset shadows in SVG
     Ok(())
   }
 
@@ -397,11 +422,107 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
     Ok(())
   }
 
+  /// Draws the background image(s) of the node as SVG.
+  fn draw_background_image_svg(
+    &self,
+    context: &RenderContext,
+    svg: &mut crate::rendering::SvgRenderer,
+    layout: Layout,
+  ) -> Result<()> {
+    let background_image = context
+      .style
+      .background_image
+      .as_deref()
+      .map(Cow::Borrowed)
+      .unwrap_or_else(|| {
+        Cow::Owned(
+          context
+            .style
+            .background
+            .iter()
+            .map(|background| background.image.clone())
+            .collect::<Vec<_>>(),
+        )
+      });
+
+    if background_image.is_empty() {
+      return Ok(());
+    }
+
+    let border_radius = BorderProperties::from_context(context, layout.size, layout.border);
+
+    // TODO: Handle BackgroundClip for SVG background images
+    // For now we only support BorderBox clip
+
+    for image in background_image.iter() {
+      match image {
+        BackgroundImage::Linear(gradient) => {
+          let rad = (*gradient.angle).to_radians();
+          let (dir_x, dir_y) = (rad.sin(), -rad.cos());
+
+          let cx = layout.size.width / 2.0;
+          let cy = layout.size.height / 2.0;
+          let max_extent =
+            ((layout.size.width * dir_x.abs()) + (layout.size.height * dir_y.abs())) / 2.0;
+
+          let x1 = cx - dir_x * max_extent;
+          let y1 = cy - dir_y * max_extent;
+          let x2 = cx + dir_x * max_extent;
+          let y2 = cy + dir_y * max_extent;
+
+          let mut stops = Vec::new();
+          let resolved_stops =
+            resolve_stops_along_axis(&gradient.stops, (max_extent * 2.0).max(1e-6), context);
+          for stop in resolved_stops {
+            let color = format!(
+              "rgba({},{},{},{})",
+              stop.color.0[0],
+              stop.color.0[1],
+              stop.color.0[2],
+              stop.color.0[3] as f32 / 255.0
+            );
+            stops.push((stop.position / (max_extent * 2.0).max(1e-6), color));
+          }
+
+          let fill = svg.add_linear_gradient(
+            &format!("{}", x1),
+            &format!("{}", y1),
+            &format!("{}", x2),
+            &format!("{}", y2),
+            &stops,
+          );
+
+          svg.fill_rect_with_fill(layout.size, &fill, border_radius, context.transform);
+        }
+        BackgroundImage::Url(url) => {
+          // For now, we just draw the image without tiling support
+          svg.draw_image(url, layout.size, context.transform);
+        }
+        _ => {
+          // TODO: Implement radial gradients and noise in SVG
+        }
+      }
+    }
+
+    Ok(())
+  }
+
   /// Draws the main content of the node.
   fn draw_content(
     &self,
     _context: &RenderContext,
     _canvas: &mut Canvas,
+    _layout: Layout,
+  ) -> Result<()> {
+    // Default implementation does nothing
+    Ok(())
+  }
+
+  /// Draws the main content of the node as SVG.
+  fn draw_content_svg(
+    &self,
+    _context: &RenderContext,
+    _svg: &mut crate::rendering::SvgRenderer,
     _layout: Layout,
   ) -> Result<()> {
     // Default implementation does nothing

@@ -131,6 +131,16 @@ impl<Nodes: Node<Nodes>> Node<Nodes> for ImageNode {
     Ok(())
   }
 
+  fn draw_content_svg(
+    &self,
+    _context: &RenderContext,
+    svg: &mut crate::rendering::SvgRenderer,
+    layout: Layout,
+  ) -> Result<()> {
+    svg.draw_image(&self.src, layout.size, _context.transform);
+    Ok(())
+  }
+
   fn get_style(&self) -> Option<&Style> {
     self.style.as_ref()
   }
@@ -147,7 +157,8 @@ fn parse_data_uri_image(src: &str) -> ImageResult {
   load_image_source_from_bytes(&data)
 }
 
-pub(crate) fn resolve_image(src: &str, context: &RenderContext) -> ImageResult {
+/// Resolves an image source from a URL or data URI.
+pub fn resolve_image(src: &str, context: &RenderContext) -> ImageResult {
   if src.starts_with(DATA_URI_PREFIX) {
     return parse_data_uri_image(src);
   }

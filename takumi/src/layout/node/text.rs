@@ -14,7 +14,10 @@ use crate::{
     node::Node,
     style::{InheritedStyle, Style, tw::TailwindValues},
   },
-  rendering::{Canvas, MaxHeight, RenderContext, inline_drawing::draw_inline_layout},
+  rendering::{
+    Canvas, MaxHeight, RenderContext, SvgRenderer,
+    inline_drawing::{draw_inline_layout, draw_inline_layout_svg},
+  },
 };
 
 /// A node that renders text content.
@@ -101,6 +104,47 @@ impl<Nodes: Node<Nodes>> Node<Nodes> for TextNode {
     );
 
     draw_inline_layout(context, canvas, layout, inline_layout, &font_style)?;
+
+    Ok(())
+  }
+
+  fn draw_content_svg(
+    &self,
+    context: &RenderContext,
+    svg: &mut SvgRenderer,
+    layout: Layout,
+  ) -> Result<()> {
+    let font_style = context.style.to_sized_font_style(context);
+    let size = layout.content_box_size();
+
+    if font_style.font_size == 0.0 {
+      return Ok(());
+    }
+
+    let max_height = match font_style.parent.line_clamp.as_ref() {
+      Some(clamp) => Some(MaxHeight::HeightAndLines(size.height, clamp.count)),
+      None => Some(MaxHeight::Absolute(size.height)),
+    };
+
+    let inline_text: InlineItem<'_, '_, Nodes> = InlineItem::Text {
+      text: self.text.as_str().into(),
+      context,
+    };
+
+    let (inline_layout, _, _) = create_inline_layout(
+      once(inline_text),
+      Size {
+        width: AvailableSpace::Definite(size.width),
+        height: AvailableSpace::Definite(size.height),
+      },
+      size.width,
+      max_height,
+      &font_style,
+      context.global,
+      InlineLayoutStage::Draw,
+    );
+
+    draw_inline_layout_svg(context, svg, layout, inline_layout, &font_style)?;
 
     Ok(())
   }

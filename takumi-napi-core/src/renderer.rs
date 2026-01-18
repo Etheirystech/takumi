@@ -142,6 +142,7 @@ pub enum OutputFormat {
   png,
   /// JPEG format.
   jpeg,
+  svg,
   /// @deprecated Use lowercase `webp` instead, may be removed in the future
   WebP,
   /// @deprecated Use lowercase `jpeg` instead, may be removed in the future
@@ -158,6 +159,7 @@ impl From<OutputFormat> for ImageOutputFormat {
       OutputFormat::WebP | OutputFormat::webp => ImageOutputFormat::WebP,
       OutputFormat::Jpeg | OutputFormat::jpeg => ImageOutputFormat::Jpeg,
       OutputFormat::Png | OutputFormat::png => ImageOutputFormat::Png,
+      OutputFormat::svg => ImageOutputFormat::Svg,
       // SAFETY: It's handled in the render task
       OutputFormat::raw => unreachable!(),
     }
