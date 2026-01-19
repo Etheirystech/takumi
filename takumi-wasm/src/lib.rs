@@ -258,7 +258,7 @@ impl Renderer {
       .map_err(map_error)?
       .into_rgba8();
 
-    self.context.persistent_image_store.insert(
+    self.context.persistent_image_store().insert(
       data.src.to_string(),
       Arc::new(takumi::resources::image::ImageSource::Bitmap(image)),
     );
