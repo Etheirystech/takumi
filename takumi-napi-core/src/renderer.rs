@@ -185,7 +185,7 @@ impl Renderer {
 
         renderer
           .global
-          .persistent_image_store_mut()
+          .persistent_image_store()
           .insert(image.src, image_source);
       }
     }
