@@ -1,5 +1,17 @@
 # @takumi-rs/helpers
 
+## 0.63.2
+
+## 0.63.1
+
+## 0.63.0
+
+### Minor Changes
+
+- ec9708d: add `fetchResources` function
+
+## 0.62.8
+
 ## 0.62.7
 
 ## 0.62.6

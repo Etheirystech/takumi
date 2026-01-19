@@ -6,7 +6,7 @@
   clippy::must_use_candidate
 )]
 
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{fmt::Display, sync::Arc};
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use serde::Deserialize;
@@ -24,10 +24,7 @@ use takumi::{
     AnimationFrame, ImageOutputFormat, RenderOptionsBuilder, encode_animated_png,
     encode_animated_webp, render, write_image,
   },
-  resources::{
-    image::{ImageSource, load_image_source_from_bytes},
-    task::FetchTaskCollection,
-  },
+  resources::{image::load_image_source_from_bytes, task::FetchTaskCollection},
 };
 use wasm_bindgen::prelude::*;
 
@@ -56,9 +53,9 @@ export type RenderOptions = {
    */
   quality?: number,
   /**
-   * The resources fetched externally. You should collect the fetch tasks first using `collectNodeFetchTasks` and then pass the resources here.
+   * The resources fetched externally. You should collect the fetch tasks first using `extractResourceUrls` and then pass the resources here.
    */
-  fetchedResources?: Map<string, ByteBuf>,
+  fetchedResources?: ImageSource[],
   /**
    * Whether to draw debug borders.
    */
@@ -84,6 +81,11 @@ export type FontDetails = {
   style?: "normal" | "italic" | "oblique",
 };
 
+export type ImageSource = {
+  src: string,
+  data: ByteBuf,
+};
+
 export type Font = FontDetails | ByteBuf;
 "#;
 
@@ -104,6 +106,9 @@ extern "C" {
 
   #[wasm_bindgen(typescript_type = "Font")]
   pub type FontType;
+
+  #[wasm_bindgen(typescript_type = "ImageSource")]
+  pub type ImageSourceType;
 }
 
 #[derive(Deserialize, Default)]
@@ -113,7 +118,7 @@ struct RenderOptions {
   height: Option<u32>,
   format: Option<ImageOutputFormat>,
   quality: Option<u8>,
-  fetched_resources: Option<HashMap<Arc<str>, ByteBuf>>,
+  fetched_resources: Option<Vec<ImageSource>>,
   draw_debug_border: Option<bool>,
   device_pixel_ratio: Option<f32>,
 }
@@ -141,6 +146,13 @@ struct FontDetails {
 enum Font {
   Object(FontDetails),
   Buffer(ByteBuf),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ImageSource {
+  src: Arc<str>,
+  data: ByteBuf,
 }
 
 #[derive(Deserialize)]
@@ -239,12 +251,17 @@ impl Renderer {
   }
 
   #[wasm_bindgen(js_name = putPersistentImage)]
-  pub fn put_persistent_image(&self, src: String, data: &[u8]) -> JsResult<()> {
-    let image = load_from_memory(data).map_err(map_error)?.into_rgba8();
-    self
-      .context
-      .persistent_image_store()
-      .insert(src, Arc::new(ImageSource::Bitmap(image)));
+  pub fn put_persistent_image(&self, data: ImageSourceType) -> JsResult<()> {
+    let data: ImageSource = from_value(data.into()).map_err(map_error)?;
+
+    let image = load_from_memory(&data.data)
+      .map_err(map_error)?
+      .into_rgba8();
+
+    self.context.persistent_image_store.insert(
+      data.src.to_string(),
+      Arc::new(takumi::resources::image::ImageSource::Bitmap(image)),
+    );
     Ok(())
   }
 
@@ -274,9 +291,9 @@ impl Renderer {
       .map(|resources| -> Result<_, JsValue> {
         resources
           .into_iter()
-          .map(|(url, buffer)| {
-            let image = load_image_source_from_bytes(&buffer).map_err(map_error)?;
-            Ok((url, image))
+          .map(|source| {
+            let image = load_image_source_from_bytes(&source.data).map_err(map_error)?;
+            Ok((source.src, image))
           })
           .collect::<Result<_, JsValue>>()
       })
@@ -376,8 +393,8 @@ impl Renderer {
 }
 
 /// Collects the fetch task urls from the node.
-#[wasm_bindgen(js_name = collectNodeFetchTasks)]
-pub fn collect_node_fetch_tasks(node: AnyNode) -> JsResult<Vec<String>> {
+#[wasm_bindgen(js_name = extractResourceUrls)]
+pub fn extract_resource_urls(node: AnyNode) -> JsResult<Vec<String>> {
   let node: NodeKind = from_value(node.into()).map_err(map_error)?;
 
   let mut collection = FetchTaskCollection::default();
@@ -392,4 +409,11 @@ pub fn collect_node_fetch_tasks(node: AnyNode) -> JsResult<Vec<String>> {
       .map(|task| task.to_string())
       .collect(),
   )
+}
+
+/// Collects the fetch task urls from the node.
+/// @deprecated Use `extractResourceUrls` instead.
+#[wasm_bindgen(js_name = collectNodeFetchTasks)]
+pub fn collect_node_fetch_tasks(node: AnyNode) -> JsResult<Vec<String>> {
+  extract_resource_urls(node)
 }

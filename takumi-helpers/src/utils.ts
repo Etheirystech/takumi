@@ -1,0 +1,67 @@
+const defaultTimeout = 5000;
+
+export type FetchResourcesOptions = {
+  /**
+   * Timeout in milliseconds.
+   * @default 5000
+   */
+  timeout?: number;
+  /**
+   * Custom fetch function.
+   * @default {globalThis.fetch}
+   */
+  fetch?: (input: string, init?: RequestInit) => Promise<Response>;
+  /**
+   * Whether to throw on any fetch failure. If false, returns only successful fetches.
+   * @default true
+   */
+  throwOnError?: boolean;
+};
+
+/**
+ * Fetches multiple resources concurrently.
+ * Validates HTTP status codes and automatically deduplicates URLs.
+ *
+ * @param urls - URLs to fetch
+ * @param options - Fetch options
+ * @returns Array of { src: string, data: ArrayBuffer }
+ */
+export async function fetchResources(
+  urls: string[],
+  options?: FetchResourcesOptions,
+) {
+  const signal = AbortSignal.timeout(options?.timeout ?? defaultTimeout);
+  const fetch = options?.fetch ?? globalThis.fetch;
+  const throwOnError = options?.throwOnError ?? true;
+
+  // Deduplicate URLs to avoid redundant fetches
+  const uniqueUrls = [...new Set(urls)];
+
+  const promises = uniqueUrls.map(async (url) => {
+    const response = await fetch(url, { signal });
+
+    // Validate HTTP status
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status}: ${response.statusText} for ${url}`,
+      );
+    }
+
+    const buffer = await response.arrayBuffer();
+    return { src: url, data: buffer };
+  });
+
+  if (throwOnError) {
+    // Original behavior: throw on any error
+    return Promise.all(promises);
+  }
+
+  // Graceful error handling: return successful fetches only
+  const results = await Promise.allSettled(promises);
+  return results
+    .filter(
+      (r): r is PromiseFulfilledResult<{ src: string; data: ArrayBuffer }> =>
+        r.status === "fulfilled",
+    )
+    .map((r) => r.value);
+}

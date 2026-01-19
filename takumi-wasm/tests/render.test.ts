@@ -60,7 +60,10 @@ describe("setup", () => {
   });
 
   test("putPersistentImage", () => {
-    renderer.putPersistentImage(localImagePath, new Uint8Array(localImage));
+    renderer.putPersistentImage({
+      src: localImagePath,
+      data: new Uint8Array(localImage),
+    });
   });
 });
 
@@ -138,17 +141,16 @@ describe("render", () => {
   });
 
   test("with fetched resources", () => {
-    const fetchedResources = new Map<string, Uint8Array>();
-    fetchedResources.set(
-      "../assets/images/yeecord.png",
-      new Uint8Array(localImage),
-    );
-
     const result = renderer.render(node, {
       width: 1200,
       height: 630,
       format: "png",
-      fetchedResources,
+      fetchedResources: [
+        {
+          src: "../assets/images/yeecord.png",
+          data: new Uint8Array(localImage),
+        },
+      ],
     });
 
     expect(result).toBeInstanceOf(Uint8Array);
@@ -228,17 +230,16 @@ describe("renderAsDataUrl", () => {
   });
 
   test("renderAsDataUrl with fetched resources", () => {
-    const fetchedResources = new Map<string, Uint8Array>();
-    fetchedResources.set(
-      "../assets/images/yeecord.png",
-      new Uint8Array(localImage),
-    );
-
     const result = renderer.renderAsDataUrl(node, {
       width: 1200,
       height: 630,
       format: "png",
-      fetchedResources,
+      fetchedResources: [
+        {
+          src: "../assets/images/yeecord.png",
+          data: new Uint8Array(localImage),
+        },
+      ],
     });
 
     expect(result).toMatch(/^data:image\/png;base64,/);

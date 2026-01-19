@@ -1,6 +1,6 @@
 [package]
 name = "takumi"
-version = "0.62.7"
+version = "0.63.2"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Render your React components to images."
@@ -24,7 +24,7 @@ rustc-hash = "2.1"
 wide = "1.1"
 
 [dependencies.fast_image_resize]
-version = "5.5"
+version = "6.0"
 features = ["only_u8x4", "image"]
 
 [dependencies.phf]
@@ -76,7 +76,7 @@ version = "0.25"
 features = ["jpeg", "png", "webp"]
 
 [dependencies.resvg]
-version = "0.45"
+version = "0.46"
 default-features = false
 optional = true
 

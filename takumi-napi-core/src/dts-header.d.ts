@@ -29,3 +29,8 @@ export interface AnyNode {
   // biome-ignore lint/suspicious/noExplicitAny: for extensibility
   [key: string]: any;
 }
+
+/**
+ * @deprecated use `ImageSource` instead.
+ */
+export type PersistentImage = ImageSource;

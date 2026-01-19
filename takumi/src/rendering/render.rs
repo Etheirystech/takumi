@@ -10,8 +10,8 @@ use crate::{
     Viewport,
     node::Node,
     style::{
-      Affine, Display, ImageScalingAlgorithm, InheritedStyle, SpacePair, apply_backdrop_filter,
-      apply_filters,
+      Affine, Display, Filter, ImageScalingAlgorithm, InheritedStyle, SpacePair,
+      apply_backdrop_filter, apply_filters,
     },
     tree::NodeTree,
   },
@@ -77,10 +77,6 @@ pub fn render<'g, N: Node<N>>(options: RenderOptions<'g, N>) -> Result<RgbaImage
     .size
     .map(|size| size.round() as u32);
 
-  if root_size.width == 0 || root_size.height == 0 {
-    return Err(crate::Error::InvalidViewport);
-  }
-
   let root_size = root_size.zip_map(options.viewport.into(), |size, viewport| {
     if let AvailableSpace::Definite(defined) = viewport {
       defined as u32
@@ -88,6 +84,10 @@ pub fn render<'g, N: Node<N>>(options: RenderOptions<'g, N>) -> Result<RgbaImage
       size
     }
   });
+
+  if root_size.width == 0 || root_size.height == 0 {
+    return Err(crate::Error::InvalidViewport);
+  }
 
   let mut canvas = Canvas::new(root_size);
 
@@ -110,7 +110,7 @@ fn apply_transform(
 
   let mut local = Affine::translation(origin.x, origin.y);
 
-  let translate = style.resolve_translate();
+  let translate = style.translate();
   if translate != SpacePair::default() {
     local *= Affine::translation(
       translate.x.to_px(sizing, border_box.width),
@@ -122,7 +122,7 @@ fn apply_transform(
     local *= Affine::rotation(rotate);
   }
 
-  let scale = style.resolve_scale();
+  let scale = style.scale();
   if scale != SpacePair::default() {
     local *= Affine::scale(scale.x.0, scale.y.0);
   }
@@ -148,7 +148,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     return Err(TaffyError::InvalidInputNode(node_id).into());
   };
 
-  if node.context.opacity == 0 || node.context.style.display == Display::None {
+  if node.context.style.opacity.0 == 0.0 || node.context.style.display == Display::None {
     return Ok(());
   }
 
@@ -192,7 +192,8 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     apply_backdrop_filter(canvas, border, layout.size, transform, &node.context);
   }
 
-  let should_create_isolated_canvas = !node.context.style.filter.is_empty();
+  let should_create_isolated_canvas =
+    node.context.style.opacity.0 < 1.0 || !node.context.style.filter.is_empty();
 
   // If isolated canvas is required, replace the current canvas with a new one.
   // Make sure to merge the image back!
@@ -225,10 +226,13 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     draw_debug_border(canvas, layout, transform);
   }
 
-  let filters = node.context.style.filter.clone();
+  let mut filters = node.context.style.filter.clone();
   let sizing = node.context.sizing;
   let current_color = node.context.current_color;
-  let opacity = node.context.opacity;
+
+  if node.context.style.opacity.0 < 1.0 {
+    filters.push(Filter::Opacity(node.context.style.opacity));
+  }
 
   if node.should_create_inline_layout() {
     node.draw_inline(canvas, layout)?;
@@ -238,13 +242,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     }
   }
 
-  apply_filters(
-    &mut canvas.image,
-    &sizing,
-    current_color,
-    opacity,
-    filters.iter(),
-  );
+  apply_filters(&mut canvas.image, &sizing, current_color, filters.iter());
 
   // If there was an isolated canvas, composite the filtered image back into the original canvas
   if let Some(mut original_canvas_image) = original_canvas_image {
@@ -254,7 +252,6 @@ fn render_node<'g, Nodes: Node<Nodes>>(
       BorderProperties::zero(),
       Affine::IDENTITY,
       ImageScalingAlgorithm::Auto,
-      255,
       None,
       &mut canvas.mask_memory,
     );

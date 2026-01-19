@@ -1,5 +1,17 @@
 # @takumi-rs/wasm
 
+## 0.63.2
+
+## 0.63.1
+
+## 0.63.0
+
+### Minor Changes
+
+- 87a12b4: rename `collectNodeFetchTasks` to `extractResourceUrls`
+
+## 0.62.8
+
 ## 0.62.7
 
 ### Patch Changes

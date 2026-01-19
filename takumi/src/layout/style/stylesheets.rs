@@ -140,7 +140,7 @@ define_style!(
   background_position: Option<BackgroundPositions>,
   background_size: Option<BackgroundSizes>,
   background_repeat: Option<BackgroundRepeats>,
-  background_color: ColorInput<false>,
+  background_color: Option<ColorInput<false>>,
   background_clip: BackgroundClip,
   box_shadow: Option<BoxShadows>,
   grid_auto_columns: Option<GridTrackSizes>,
@@ -203,6 +203,7 @@ pub(crate) struct SizedFontStyle<'s> {
   pub color: Color,
   pub text_stroke_color: Color,
   pub text_decoration_color: Color,
+  pub background_color: Color,
 }
 
 impl<'s> From<&'s SizedFontStyle<'s>> for TextStyle<'s, InlineBrush> {
@@ -242,6 +243,7 @@ impl<'s> From<&'s SizedFontStyle<'s>> for TextStyle<'s, InlineBrush> {
         color: style.color,
         decoration_color: style.text_decoration_color,
         stroke_color: style.text_stroke_color,
+        background_color: style.background_color,
       },
       text_wrap_mode: style.parent.text_wrap_mode_and_line_clamp().0.into(),
 
@@ -267,7 +269,7 @@ impl InheritedStyle {
     )
   }
 
-  pub(crate) fn resolve_translate(&self) -> SpacePair<Length> {
+  pub(crate) fn translate(&self) -> SpacePair<Length> {
     SpacePair::from_pair(
       self
         .translate_x
@@ -278,11 +280,24 @@ impl InheritedStyle {
     )
   }
 
-  pub(crate) fn resolve_scale(&self) -> SpacePair<PercentageNumber> {
+  pub(crate) fn scale(&self) -> SpacePair<PercentageNumber> {
     SpacePair::from_pair(
       self.scale_x.unwrap_or(self.scale.unwrap_or_default().x),
       self.scale_y.unwrap_or(self.scale.unwrap_or_default().y),
     )
+  }
+
+  pub(crate) fn background_color(&self) -> ColorInput<false> {
+    if let Some(color) = self.background_color {
+      return color;
+    }
+
+    self
+      .background
+      .iter()
+      .filter_map(|bg| bg.color)
+      .next_back()
+      .unwrap_or_default()
   }
 
   pub(crate) fn ellipsis_char(&self) -> &str {
@@ -545,23 +560,23 @@ impl InheritedStyle {
               *shadow,
               &context.sizing,
               context.current_color,
-              context.opacity,
               Size::from_length(context.sizing.font_size),
             )
           })
           .collect()
       }),
-      color: self.color.resolve(context.current_color, context.opacity),
+      color: self.color.resolve(context.current_color),
       text_stroke_color: self
         .webkit_text_stroke_color
         .or(self.webkit_text_stroke.and_then(|stroke| stroke.color))
         .unwrap_or_default()
-        .resolve(context.current_color, context.opacity),
+        .resolve(context.current_color),
       text_decoration_color: self
         .text_decoration_color
         .or(self.text_decoration.color)
         .unwrap_or(ColorInput::CurrentColor)
-        .resolve(context.current_color, context.opacity),
+        .resolve(context.current_color),
+      background_color: self.background_color().resolve(context.current_color),
     }
   }
 

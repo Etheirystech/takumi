@@ -1,5 +1,41 @@
 # @takumi-rs/image-response
 
+## 0.63.2
+
+### Patch Changes
+
+- @takumi-rs/core@0.63.2
+- @takumi-rs/wasm@0.63.2
+- @takumi-rs/helpers@0.63.2
+
+## 0.63.1
+
+### Patch Changes
+
+- Updated dependencies [9fb085f]
+  - @takumi-rs/core@0.63.1
+  - @takumi-rs/wasm@0.63.1
+  - @takumi-rs/helpers@0.63.1
+
+## 0.63.0
+
+### Patch Changes
+
+- Updated dependencies [87a12b4]
+- Updated dependencies [75b0f10]
+- Updated dependencies [ec9708d]
+  - @takumi-rs/wasm@0.63.0
+  - @takumi-rs/core@0.63.0
+  - @takumi-rs/helpers@0.63.0
+
+## 0.62.8
+
+### Patch Changes
+
+- @takumi-rs/core@0.62.8
+- @takumi-rs/wasm@0.62.8
+- @takumi-rs/helpers@0.62.8
+
 ## 0.62.7
 
 ### Patch Changes

@@ -1,5 +1,21 @@
 # takumi
 
+## 0.63.2
+
+### Patch Changes
+
+- 63088f4: make `background_color` field optional, draw background color on text spans #220
+
+## 0.63.1
+
+## 0.63.0
+
+## 0.62.8
+
+### Patch Changes
+
+- b0a21a4: refactor opacity blending should be on render level
+
 ## 0.62.7
 
 ## 0.62.6

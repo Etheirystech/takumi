@@ -1,5 +1,5 @@
 import { fromJsx } from "@takumi-rs/helpers/jsx";
-import initWasm, { collectNodeFetchTasks, Renderer } from "@takumi-rs/wasm";
+import initWasm, { extractResourceUrls, Renderer } from "@takumi-rs/wasm";
 import wasmUrl from "@takumi-rs/wasm/takumi_wasm_bg.wasm?url";
 import * as React from "react";
 import { transform } from "sucrase";
@@ -95,7 +95,7 @@ self.onmessage = async (event: MessageEvent) => {
           ),
         );
 
-        const resourceUrls = collectNodeFetchTasks(node);
+        const resourceUrls = extractResourceUrls(node);
 
         const fetchedResources = new Map(
           await Promise.all(
