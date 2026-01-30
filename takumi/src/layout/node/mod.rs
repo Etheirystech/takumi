@@ -314,11 +314,27 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
   /// Draws the inset box shadow of the node.
   fn draw_inset_box_shadow(
     &self,
-    _context: &RenderContext,
-    _canvas: &mut Canvas,
-    _layout: Layout,
+    context: &RenderContext,
+    canvas: &mut Canvas,
+    layout: Layout,
   ) -> Result<()> {
-    // Default implementation does nothing
+    let Some(box_shadow) = context.style.box_shadow.as_ref() else {
+      return Ok(());
+    };
+
+    let border_radius = BorderProperties::from_context(context, layout.size, layout.border);
+
+    for shadow in box_shadow.iter() {
+      if !shadow.inset {
+        continue;
+      }
+
+      let sized_shadow =
+        SizedShadow::from_box_shadow(*shadow, &context.sizing, context.current_color, layout.size);
+
+      sized_shadow.draw_inset(context.transform, border_radius, canvas, layout);
+    }
+
     Ok(())
   }
 
