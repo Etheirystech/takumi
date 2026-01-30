@@ -2340,6 +2340,7 @@ dependencies = [
  "tiny-skia",
  "wide",
  "wuff",
+ "xmlwriter",
  "zeno",
 ]
 

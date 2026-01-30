@@ -3,107 +3,66 @@ use crate::{
   rendering::BorderProperties,
 };
 use taffy::Size;
+use xmlwriter::{Options, XmlWriter};
 use zeno::Command;
 
 /// SVG renderer that generates vector XML output.
 pub struct SvgRenderer {
-  buffer: String,
-  defs: String,
+  writer: XmlWriter,
+  defs: XmlWriter,
   width: f32,
   height: f32,
-  indent: usize,
   gradient_count: usize,
+  in_defs: bool,
 }
 
 impl SvgRenderer {
   /// Creates a new SVG renderer with the specified dimensions.
   pub fn new(width: u32, height: u32) -> Self {
+    let options = Options::default();
     Self {
-      buffer: String::new(),
-      defs: String::new(),
+      writer: XmlWriter::new(options.clone()),
+      defs: XmlWriter::new(options),
       width: width as f32,
       height: height as f32,
-      indent: 0,
       gradient_count: 0,
+      in_defs: false,
     }
   }
 
   /// Returns the SVG content as a string.
-  pub fn into_string(self) -> String {
-    let mut final_svg = self.buffer;
-    if !self.defs.is_empty() {
-      // Insert defs after the second line (SVG tag)
-      let mut pos = 0;
-      for _ in 0..2 {
-        if let Some(next_pos) = final_svg[pos..].find('\n') {
-          pos += next_pos + 1;
-        } else {
-          break;
-        }
+  pub fn into_string(mut self) -> String {
+    if self.in_defs {
+      self.defs.end_element();
+    }
+
+    self.writer.end_element();
+
+    let main_content = self.writer.end_document();
+    let defs_content = self.defs.end_document();
+
+    let mut result = String::with_capacity(main_content.len() + defs_content.len() + 50);
+    result.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
+    result.push('\n');
+
+    if !defs_content.is_empty() {
+      if let Some(pos) = main_content.rfind("</svg>") {
+        result.push_str(&main_content[..pos]);
+        result.push_str(&defs_content);
+        result.push_str(&main_content[pos..]);
+      } else {
+        result.push_str(&main_content);
       }
-
-      if pos > 0 {
-        let mut defs_block = String::from("  <defs>\n");
-        defs_block.push_str(&self.defs);
-        defs_block.push_str("  </defs>\n");
-        final_svg.insert_str(pos, &defs_block);
-      }
+    } else {
+      result.push_str(&main_content);
     }
-    final_svg
-  }
 
-  fn indent(&mut self) {
-    for _ in 0..self.indent {
-      self.buffer.push(' ');
-    }
-  }
-
-  fn write_line(&mut self, line: &str) {
-    self.indent();
-    self.buffer.push_str(line);
-    self.buffer.push('\n');
-  }
-
-  fn write_open_tag(&mut self, tag: &str, attrs: &[(&str, impl AsRef<str>)]) {
-    self.indent();
-    self.buffer.push('<');
-    self.buffer.push_str(tag);
-    for (key, value) in attrs {
-      self.buffer.push(' ');
-      self.buffer.push_str(key);
-      self.buffer.push_str("=\"");
-      self.buffer.push_str(value.as_ref());
-      self.buffer.push('\"');
-    }
-    self.buffer.push_str(">\n");
-    self.indent += 2;
-  }
-
-  fn write_close_tag(&mut self, tag: &str) {
-    self.indent -= 2;
-    self.indent();
-    self.buffer.push_str("</");
-    self.buffer.push_str(tag);
-    self.buffer.push_str(">\n");
-  }
-
-  fn write_self_closing_tag(&mut self, tag: &str, attrs: &[(&str, impl AsRef<str>)]) {
-    self.indent();
-    self.buffer.push('<');
-    self.buffer.push_str(tag);
-    for (key, value) in attrs {
-      self.buffer.push(' ');
-      self.buffer.push_str(key);
-      self.buffer.push_str("=\"");
-      self.buffer.push_str(value.as_ref());
-      self.buffer.push('\"');
-    }
-    self.buffer.push_str("/>\n");
+    result
   }
 
   fn color_to_svg(&self, color: Color) -> String {
     format!(
-      "rgba({},{},{},{})",
+      "rgba({},{},{},{:.3})",
       color.0[0],
       color.0[1],
       color.0[2],
@@ -148,16 +107,32 @@ impl SvgRenderer {
 
   /// Writes the SVG header element to the buffer.
   pub fn write_svg_header(&mut self) {
-    self.write_line(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
-    self.write_line(&format!(
-      r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}">"#,
-      self.width, self.height, self.width, self.height
-    ));
+    self.writer.start_element("svg");
+    self
+      .writer
+      .write_attribute("xmlns", "http://www.w3.org/2000/svg");
+    self.writer.write_attribute_fmt(
+      "viewBox",
+      format_args!("0 0 {} {}", self.width, self.height),
+    );
+    self
+      .writer
+      .write_attribute_fmt("width", format_args!("{}", self.width));
+    self
+      .writer
+      .write_attribute_fmt("height", format_args!("{}", self.height));
   }
 
-  /// Writes the SVG footer closing element to the buffer.
+  /// Writes the SVG footer element to the buffer.
   pub fn write_svg_footer(&mut self) {
-    self.write_line(r#"</svg>"#);
+    self.writer.end_element();
+  }
+
+  fn start_defs(&mut self) {
+    if !self.in_defs {
+      self.defs.start_element("defs");
+      self.in_defs = true;
+    }
   }
 
   pub(crate) fn fill_rect(
@@ -171,52 +146,55 @@ impl SvgRenderer {
       return;
     }
 
-    let width = format!("{}", size.width);
-    let height = format!("{}", size.height);
     let fill = self.color_to_svg(color);
 
-    let mut attrs: Vec<(&str, String)> = vec![
-      ("x", "0".to_string()),
-      ("y", "0".to_string()),
-      ("width", width),
-      ("height", height),
-      ("fill", fill),
-    ];
+    if !transform.is_identity() {
+      self.writer.start_element("g");
+      self
+        .writer
+        .write_attribute("transform", &self.transform_to_svg(transform));
+    }
+
+    self.writer.start_element("rect");
+    self.writer.write_attribute("x", "0");
+    self.writer.write_attribute("y", "0");
+    self
+      .writer
+      .write_attribute_fmt("width", format_args!("{}", size.width));
+    self
+      .writer
+      .write_attribute_fmt("height", format_args!("{}", size.height));
+    self.writer.write_attribute("fill", &fill);
 
     if border.radius.0[0].x > 0.0 {
-      attrs.push(("rx", format!("{}", border.radius.0[0].x)));
+      self
+        .writer
+        .write_attribute_fmt("rx", format_args!("{}", border.radius.0[0].x));
     }
 
-    if !transform.is_identity() {
-      let transform_str = self.transform_to_svg(transform);
-      self.write_open_tag("g", &[("transform", &transform_str)]);
-    }
-
-    let attr_refs: Vec<(&str, &str)> = attrs.iter().map(|(k, v)| (*k, v.as_str())).collect();
-    self.write_self_closing_tag("rect", &attr_refs);
+    self.writer.end_element();
 
     if !transform.is_identity() {
-      self.write_close_tag("g");
+      self.writer.end_element();
     }
   }
 
   pub(crate) fn draw_text(&mut self, commands: &[Command], color: Color, transform: Affine) {
     let path_d = self.commands_to_path(commands);
-    let transform_str = if !transform.is_identity() {
-      self.transform_to_svg(transform)
-    } else {
-      String::new()
-    };
 
-    let fill_color = self.color_to_svg(color);
+    self.writer.start_element("path");
+    self.writer.write_attribute("d", &path_d);
+    self
+      .writer
+      .write_attribute("fill", &self.color_to_svg(color));
 
-    let mut attrs: Vec<(&str, &str)> = vec![("d", &path_d), ("fill", &fill_color)];
-
-    if !transform_str.is_empty() {
-      attrs.push(("transform", &transform_str));
+    if !transform.is_identity() {
+      self
+        .writer
+        .write_attribute("transform", &self.transform_to_svg(transform));
     }
 
-    self.write_self_closing_tag("path", &attrs);
+    self.writer.end_element();
   }
 
   pub(crate) fn draw_border(
@@ -229,46 +207,49 @@ impl SvgRenderer {
       return;
     }
 
-    let transform_str = if !transform.is_identity() {
-      self.transform_to_svg(transform)
-    } else {
-      String::new()
-    };
-
-    let x = format!("{}", border.width.left);
-    let y = format!("{}", border.width.top);
-    let width = format!("{}", size.width - border.width.left - border.width.right);
-    let height = format!("{}", size.height - border.width.top - border.width.bottom);
-    let stroke_width = format!(
-      "{}",
-      border
-        .width
-        .top
-        .max(border.width.right)
-        .max(border.width.bottom)
-        .max(border.width.left)
-    );
-    let rx = format!("{}", border.radius.0[0].x);
-    let stroke = self.color_to_svg(border.color);
-
-    let attrs: Vec<(&str, &str)> = vec![
-      ("x", &x),
-      ("y", &y),
-      ("width", &width),
-      ("height", &height),
-      ("fill", "none"),
-      ("stroke", &stroke),
-      ("stroke-width", &stroke_width),
-      ("rx", &rx),
-    ];
-
-    let mut all_attrs = attrs;
-
-    if !transform_str.is_empty() {
-      all_attrs.push(("transform", &transform_str));
+    if !transform.is_identity() {
+      self.writer.start_element("g");
+      self
+        .writer
+        .write_attribute("transform", &self.transform_to_svg(transform));
     }
 
-    self.write_self_closing_tag("rect", &all_attrs);
+    let x = border.width.left;
+    let y = border.width.top;
+    let width = size.width - border.width.left - border.width.right;
+    let height = size.height - border.width.top - border.width.bottom;
+    let stroke_width = border
+      .width
+      .top
+      .max(border.width.right)
+      .max(border.width.bottom)
+      .max(border.width.left);
+    let rx = border.radius.0[0].x;
+
+    self.writer.start_element("rect");
+    self.writer.write_attribute_fmt("x", format_args!("{}", x));
+    self.writer.write_attribute_fmt("y", format_args!("{}", y));
+    self
+      .writer
+      .write_attribute_fmt("width", format_args!("{}", width));
+    self
+      .writer
+      .write_attribute_fmt("height", format_args!("{}", height));
+    self.writer.write_attribute("fill", "none");
+    self
+      .writer
+      .write_attribute("stroke", &self.color_to_svg(border.color));
+    self
+      .writer
+      .write_attribute_fmt("stroke-width", format_args!("{}", stroke_width));
+    self
+      .writer
+      .write_attribute_fmt("rx", format_args!("{}", rx));
+    self.writer.end_element();
+
+    if !transform.is_identity() {
+      self.writer.end_element();
+    }
   }
 
   pub(crate) fn draw_background_color(
@@ -289,21 +270,31 @@ impl SvgRenderer {
     y2: &str,
     stops: &[(f32, String)],
   ) -> String {
+    self.start_defs();
+
     self.gradient_count += 1;
     let id = format!("grad{}", self.gradient_count);
-    self.defs.push_str(&format!(
-      "    <linearGradient id=\"{}\" x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" gradientUnits=\"userSpaceOnUse\">\n",
-      id, x1, y1, x2, y2
-    ));
+
+    self.defs.start_element("linearGradient");
+    self.defs.write_attribute("id", &id);
+    self.defs.write_attribute("x1", x1);
+    self.defs.write_attribute("y1", y1);
+    self.defs.write_attribute("x2", x2);
+    self.defs.write_attribute("y2", y2);
+    self.defs.write_attribute("gradientUnits", "userSpaceOnUse");
+
     for (offset, color) in stops {
-      self.defs.push_str(&format!(
-        "      <stop offset=\"{}%\" stop-color=\"{}\" />\n",
-        offset * 100.0,
-        color
-      ));
+      self.defs.start_element("stop");
+      self
+        .defs
+        .write_attribute_fmt("offset", format_args!("{}%", offset * 100.0));
+      self.defs.write_attribute("stop-color", color);
+      self.defs.end_element();
     }
-    self.defs.push_str("    </linearGradient>\n");
-    format!("url(#{})", id)
+
+    self.defs.end_element();
+
+    format!("url(#{id})")
   }
 
   pub(crate) fn fill_rect_with_fill(
@@ -313,55 +304,59 @@ impl SvgRenderer {
     border: BorderProperties,
     transform: Affine,
   ) {
-    let width = format!("{}", size.width);
-    let height = format!("{}", size.height);
+    if !transform.is_identity() {
+      self.writer.start_element("g");
+      self
+        .writer
+        .write_attribute("transform", &self.transform_to_svg(transform));
+    }
 
-    let mut attrs: Vec<(&str, String)> = vec![
-      ("x", "0".to_string()),
-      ("y", "0".to_string()),
-      ("width", width),
-      ("height", height),
-      ("fill", fill.to_string()),
-    ];
+    self.writer.start_element("rect");
+    self.writer.write_attribute("x", "0");
+    self.writer.write_attribute("y", "0");
+    self
+      .writer
+      .write_attribute_fmt("width", format_args!("{}", size.width));
+    self
+      .writer
+      .write_attribute_fmt("height", format_args!("{}", size.height));
+    self.writer.write_attribute("fill", fill);
 
     if border.radius.0[0].x > 0.0 {
-      attrs.push(("rx", format!("{}", border.radius.0[0].x)));
+      self
+        .writer
+        .write_attribute_fmt("rx", format_args!("{}", border.radius.0[0].x));
     }
 
-    if !transform.is_identity() {
-      let transform_str = self.transform_to_svg(transform);
-      self.write_open_tag("g", &[("transform", &transform_str)]);
-    }
-
-    let attr_refs: Vec<(&str, &str)> = attrs.iter().map(|(k, v)| (*k, v.as_str())).collect();
-    self.write_self_closing_tag("rect", &attr_refs);
+    self.writer.end_element();
 
     if !transform.is_identity() {
-      self.write_close_tag("g");
+      self.writer.end_element();
     }
   }
 
   pub(crate) fn draw_image(&mut self, href: &str, size: Size<f32>, transform: Affine) {
-    let width = format!("{}", size.width);
-    let height = format!("{}", size.height);
-
-    let attrs: Vec<(&str, &str)> = vec![
-      ("href", href),
-      ("x", "0"),
-      ("y", "0"),
-      ("width", &width),
-      ("height", &height),
-    ];
-
     if !transform.is_identity() {
-      let transform_str = self.transform_to_svg(transform);
-      self.write_open_tag("g", &[("transform", &transform_str)]);
+      self.writer.start_element("g");
+      self
+        .writer
+        .write_attribute("transform", &self.transform_to_svg(transform));
     }
 
-    self.write_self_closing_tag("image", &attrs);
+    self.writer.start_element("image");
+    self.writer.write_attribute("href", href);
+    self.writer.write_attribute("x", "0");
+    self.writer.write_attribute("y", "0");
+    self
+      .writer
+      .write_attribute_fmt("width", format_args!("{}", size.width));
+    self
+      .writer
+      .write_attribute_fmt("height", format_args!("{}", size.height));
+    self.writer.end_element();
 
     if !transform.is_identity() {
-      self.write_close_tag("g");
+      self.writer.end_element();
     }
   }
 
@@ -372,34 +367,53 @@ impl SvgRenderer {
     blur_radius: f32,
     color: &str,
   ) -> String {
+    self.start_defs();
+
     self.gradient_count += 1;
     let id = format!("shadow{}", self.gradient_count);
     let std_dev = blur_radius / 2.0;
 
-    self.defs.push_str(&format!(
-      "    <filter id=\"{}\" x=\"-50%\" y=\"-50%\" width=\"200%\" height=\"200%\">\n",
-      id
-    ));
-    self.defs.push_str(&format!(
-      "      <feGaussianBlur in=\"SourceAlpha\" stdDeviation=\"{}\" />\n",
-      std_dev
-    ));
-    self.defs.push_str(&format!(
-      "      <feOffset dx=\"{}\" dy=\"{}\" result=\"offsetblur\" />\n",
-      offset_x, offset_y
-    ));
-    self
-      .defs
-      .push_str(&format!("      <feFlood flood-color=\"{}\" />\n", color));
-    self
-      .defs
-      .push_str("      <feComposite in2=\"offsetblur\" operator=\"in\" />\n");
-    self.defs.push_str("      <feMerge>\n");
-    self.defs.push_str("        <feMergeNode />\n");
-    self.defs.push_str("      </feMerge>\n");
-    self.defs.push_str("    </filter>\n");
+    self.defs.start_element("filter");
+    self.defs.write_attribute("id", &id);
+    self.defs.write_attribute("x", "-50%");
+    self.defs.write_attribute("y", "-50%");
+    self.defs.write_attribute("width", "200%");
+    self.defs.write_attribute("height", "200%");
 
-    format!("url(#{})", id)
+    self.defs.start_element("feGaussianBlur");
+    self.defs.write_attribute("in", "SourceAlpha");
+    self
+      .defs
+      .write_attribute_fmt("stdDeviation", format_args!("{}", std_dev));
+    self.defs.end_element();
+
+    self.defs.start_element("feOffset");
+    self
+      .defs
+      .write_attribute_fmt("dx", format_args!("{}", offset_x));
+    self
+      .defs
+      .write_attribute_fmt("dy", format_args!("{}", offset_y));
+    self.defs.write_attribute("result", "offsetblur");
+    self.defs.end_element();
+
+    self.defs.start_element("feFlood");
+    self.defs.write_attribute("flood-color", color);
+    self.defs.end_element();
+
+    self.defs.start_element("feComposite");
+    self.defs.write_attribute("in2", "offsetblur");
+    self.defs.write_attribute("operator", "in");
+    self.defs.end_element();
+
+    self.defs.start_element("feMerge");
+    self.defs.start_element("feMergeNode");
+    self.defs.end_element();
+    self.defs.end_element();
+
+    self.defs.end_element();
+
+    format!("url(#{id})")
   }
 
   pub(crate) fn fill_rect_with_filter(
@@ -410,33 +424,37 @@ impl SvgRenderer {
     border: BorderProperties,
     transform: Affine,
   ) {
-    let width = format!("{}", size.width);
-    let height = format!("{}", size.height);
-    let fill = self.color_to_svg(color);
+    if !transform.is_identity() {
+      self.writer.start_element("g");
+      self
+        .writer
+        .write_attribute("transform", &self.transform_to_svg(transform));
+    }
 
-    let mut attrs: Vec<(&str, String)> = vec![
-      ("x", "0".to_string()),
-      ("y", "0".to_string()),
-      ("width", width),
-      ("height", height),
-      ("fill", fill),
-      ("filter", filter.to_string()),
-    ];
+    self.writer.start_element("rect");
+    self.writer.write_attribute("x", "0");
+    self.writer.write_attribute("y", "0");
+    self
+      .writer
+      .write_attribute_fmt("width", format_args!("{}", size.width));
+    self
+      .writer
+      .write_attribute_fmt("height", format_args!("{}", size.height));
+    self
+      .writer
+      .write_attribute("fill", &self.color_to_svg(color));
+    self.writer.write_attribute("filter", filter);
 
     if border.radius.0[0].x > 0.0 {
-      attrs.push(("rx", format!("{}", border.radius.0[0].x)));
+      self
+        .writer
+        .write_attribute_fmt("rx", format_args!("{}", border.radius.0[0].x));
     }
 
-    if !transform.is_identity() {
-      let transform_str = self.transform_to_svg(transform);
-      self.write_open_tag("g", &[("transform", &transform_str)]);
-    }
-
-    let attr_refs: Vec<(&str, &str)> = attrs.iter().map(|(k, v)| (*k, v.as_str())).collect();
-    self.write_self_closing_tag("rect", &attr_refs);
+    self.writer.end_element();
 
     if !transform.is_identity() {
-      self.write_close_tag("g");
+      self.writer.end_element();
     }
   }
 }
