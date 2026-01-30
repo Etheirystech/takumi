@@ -1,6 +1,6 @@
 use std::{
   fs::File,
-  io::Read,
+  io::{Read, Write},
   path::{Path, PathBuf},
   sync::{Arc, LazyLock},
 };
@@ -132,11 +132,8 @@ pub fn run_fixture_test(node: NodeKind, fixture_name: &str) {
     .unwrap();
 
   let image = render(options.clone()).unwrap();
-  let png_path = format!("tests/fixtures-generated/{}.png", base_name);
-  let mut png_file = File::create(png_path).unwrap();
-  write_image(&image, &mut png_file, ImageOutputFormat::Png, Some(75)).unwrap();
 
-  let fixture_path = format!("tests/fixtures-generated/{}.webp", fixture_name);
+  let fixture_path = format!("tests/fixtures-generated/{fixture_name}.webp");
   let path = Path::new(&fixture_path);
 
   let mut file = File::create(path).unwrap();
@@ -144,7 +141,7 @@ pub fn run_fixture_test(node: NodeKind, fixture_name: &str) {
   write_image(&image, &mut file, ImageOutputFormat::WebP, None).unwrap();
 
   let svg = render_to_svg(options).unwrap();
-  let svg_path = format!("tests/fixtures-generated/{}.svg", base_name);
+  let svg_path = format!("tests/fixtures-generated/{fixture_name}.svg");
 
   let mut svg_file = File::create(svg_path).unwrap();
 

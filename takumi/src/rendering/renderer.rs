@@ -21,7 +21,7 @@ impl SvgRenderer {
   pub fn new(width: u32, height: u32) -> Self {
     let options = Options::default();
     Self {
-      writer: XmlWriter::new(options.clone()),
+      writer: XmlWriter::new(options),
       defs: XmlWriter::new(options),
       width: width as f32,
       height: height as f32,
@@ -410,6 +410,102 @@ impl SvgRenderer {
     self.defs.start_element("feMergeNode");
     self.defs.end_element();
     self.defs.end_element();
+
+    self.defs.end_element();
+
+    format!("url(#{id})")
+  }
+
+  pub(crate) fn add_inset_shadow_filter(
+    &mut self,
+    offset_x: f32,
+    offset_y: f32,
+    blur_radius: f32,
+    color: &str,
+  ) -> String {
+    self.start_defs();
+
+    self.gradient_count += 1;
+    let id = format!("insetShadow{}", self.gradient_count);
+    let std_dev = blur_radius / 2.0;
+
+    self.defs.start_element("filter");
+    self.defs.write_attribute("id", &id);
+    self.defs.write_attribute("x", "-50%");
+    self.defs.write_attribute("y", "-50%");
+    self.defs.write_attribute("width", "200%");
+    self.defs.write_attribute("height", "200%");
+
+    self.defs.start_element("feGaussianBlur");
+    self.defs.write_attribute("in", "SourceAlpha");
+    self
+      .defs
+      .write_attribute_fmt("stdDeviation", format_args!("{}", std_dev));
+    self.defs.end_element();
+
+    self.defs.start_element("feOffset");
+    self
+      .defs
+      .write_attribute_fmt("dx", format_args!("{}", offset_x));
+    self
+      .defs
+      .write_attribute_fmt("dy", format_args!("{}", offset_y));
+    self.defs.write_attribute("result", "offsetblur");
+    self.defs.end_element();
+
+    self.defs.start_element("feFlood");
+    self.defs.write_attribute("flood-color", color);
+    self.defs.end_element();
+
+    self.defs.start_element("feComposite");
+    self.defs.write_attribute("in2", "offsetblur");
+    self.defs.write_attribute("operator", "in");
+    self.defs.end_element();
+
+    self.defs.start_element("feComposite");
+    self.defs.write_attribute("in2", "SourceAlpha");
+    self.defs.write_attribute("operator", "in");
+    self.defs.end_element();
+
+    self.defs.end_element();
+
+    format!("url(#{id})")
+  }
+
+  pub(crate) fn add_radial_gradient(
+    &mut self,
+    cx: &str,
+    cy: &str,
+    r: &str,
+    fx: Option<&str>,
+    fy: Option<&str>,
+    stops: &[(f32, String)],
+  ) -> String {
+    self.start_defs();
+
+    self.gradient_count += 1;
+    let id = format!("radialGrad{}", self.gradient_count);
+
+    self.defs.start_element("radialGradient");
+    self.defs.write_attribute("id", &id);
+    self.defs.write_attribute("cx", cx);
+    self.defs.write_attribute("cy", cy);
+    self.defs.write_attribute("r", r);
+    self.defs.write_attribute("gradientUnits", "userSpaceOnUse");
+
+    if let (Some(fx), Some(fy)) = (fx, fy) {
+      self.defs.write_attribute("fx", fx);
+      self.defs.write_attribute("fy", fy);
+    }
+
+    for (offset, color) in stops {
+      self.defs.start_element("stop");
+      self
+        .defs
+        .write_attribute_fmt("offset", format_args!("{}%", offset * 100.0));
+      self.defs.write_attribute("stop-color", color);
+      self.defs.end_element();
+    }
 
     self.defs.end_element();
 

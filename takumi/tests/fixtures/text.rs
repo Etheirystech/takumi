@@ -22,7 +22,7 @@ fn text_basic() {
     text: "The quick brown fox jumps over the lazy dog 12345".to_string(),
   };
 
-  run_style_width_test(NodeKind::Text(text), "text_basic.png");
+  run_fixture_test(text.into(), "text_basic");
 }
 
 #[test]
@@ -416,7 +416,7 @@ fn text_stroke_black_red() {
     text: "Red Stroke".to_string(),
   };
 
-  run_style_width_test(text.into(), "text_stroke_black_red.png");
+  run_fixture_test(text.into(), "text_stroke_black_red");
 }
 
 // Text shadow fixture
@@ -709,5 +709,5 @@ fn text_wrap_style_all() {
     ),
   };
 
-  run_style_width_test(container.into(), "text_wrap_style_all.png");
+  run_fixture_test(container.into(), "text_wrap_style_all");
 }

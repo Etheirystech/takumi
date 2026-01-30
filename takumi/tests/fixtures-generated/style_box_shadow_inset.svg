@@ -1,5 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
-<rect x="0" y="0" width="1200" height="630" fill="rgba(0,0,255,1)"/>
-<rect x="0" y="0" width="120" height="80" fill="rgba(255,255,255,1)" rx="16"/>
+    <rect x="0" y="0" width="1200" height="630" fill="rgba(0,0,255,1.000)"/>
+    <rect x="0" y="0" width="120" height="80" fill="rgba(255,255,255,1.000)" rx="16"/>
+    <rect x="0" y="0" width="120" height="80" fill="rgba(0,0,0,0.600)" filter="url(#insetShadow1)" rx="16"/>
+<defs>
+    <filter id="insetShadow1" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="9"/>
+        <feOffset dx="4" dy="6" result="offsetblur"/>
+        <feFlood flood-color="rgba(0,0,0,0.6)"/>
+        <feComposite in2="offsetblur" operator="in"/>
+        <feComposite in2="SourceAlpha" operator="in"/>
+    </filter>
+</defs>
 </svg>

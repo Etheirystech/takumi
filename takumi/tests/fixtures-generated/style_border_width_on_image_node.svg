@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
-<rect x="0" y="0" width="1200" height="630" fill="rgba(255,255,255,1)"/>
-<rect x="2" y="2" width="124" height="124" fill="none" stroke="rgba(202,202,202,1)" stroke-width="2" rx="128" transform="matrix(1,0,0,1,536,251)"/>
-<g transform="matrix(1,0,0,1,536,251)">
-  <image href="assets/images/yeecord.png" x="0" y="0" width="128" height="128"/>
-</g>
+    <rect x="0" y="0" width="1200" height="630" fill="rgba(255,255,255,1.000)"/>
+    <g transform="matrix(1,0,0,1,536,251)">
+        <rect x="2" y="2" width="124" height="124" fill="none" stroke="rgba(202,202,202,1.000)" stroke-width="2" rx="128"/>
+    </g>
+    <g transform="matrix(1,0,0,1,536,251)">
+        <image href="assets/images/yeecord.png" x="0" y="0" width="128" height="128"/>
+    </g>
+
 </svg>

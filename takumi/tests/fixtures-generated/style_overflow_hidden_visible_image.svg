@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
-<rect x="0" y="0" width="1200" height="630" fill="rgba(255,255,255,1)"/>
-<rect x="4" y="4" width="192" height="192" fill="none" stroke="rgba(255,0,0,1)" stroke-width="4" rx="0" transform="matrix(1,0,0,1,500,215)"/>
-<rect x="4" y="4" width="292" height="292" fill="none" stroke="rgba(0,255,0,1)" stroke-width="4" rx="0" transform="matrix(1,0,0,1,504,219)"/>
-<g transform="matrix(1,0,0,1,504,219)">
-  <image href="assets/images/yeecord.png" x="0" y="0" width="300" height="300"/>
-</g>
+    <rect x="0" y="0" width="1200" height="630" fill="rgba(255,255,255,1.000)"/>
+    <g transform="matrix(1,0,0,1,500,215)">
+        <rect x="4" y="4" width="192" height="192" fill="none" stroke="rgba(255,0,0,1.000)" stroke-width="4" rx="0"/>
+    </g>
+    <g transform="matrix(1,0,0,1,504,219)">
+        <rect x="4" y="4" width="292" height="292" fill="none" stroke="rgba(0,255,0,1.000)" stroke-width="4" rx="0"/>
+    </g>
+    <g transform="matrix(1,0,0,1,504,219)">
+        <image href="assets/images/yeecord.png" x="0" y="0" width="300" height="300"/>
+    </g>
+
 </svg>

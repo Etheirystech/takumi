@@ -263,8 +263,47 @@ pub(crate) fn draw_inline_layout_svg(
 
                   svg.draw_text(&commands, glyph_run.style().brush.color, transform);
                 }
-                crate::resources::font::ResolvedGlyph::Image(_) => {
-                  // TODO: Handle bitmap glyphs in SVG
+                crate::resources::font::ResolvedGlyph::Image(bitmap) => {
+                  // Handle bitmap glyphs in SVG by embedding as base64 data URI
+                  use base64::{Engine, prelude::BASE64_STANDARD};
+                  use image::ImageFormat;
+
+                  let width = bitmap.placement.width;
+                  let height = bitmap.placement.height;
+
+                  // Create an image buffer from the bitmap data
+                  if let Some(image_buffer) =
+                    image::RgbaImage::from_raw(width, height, bitmap.data.clone())
+                  {
+                    // Encode to PNG for embedding
+                    let mut png_data = Vec::new();
+                    if image_buffer
+                      .write_to(&mut std::io::Cursor::new(&mut png_data), ImageFormat::Png)
+                      .is_ok()
+                    {
+                      let base64 = BASE64_STANDARD.encode(&png_data);
+                      let data_uri = format!("data:image/png;base64,{}", base64);
+
+                      let transform = context.transform
+                        * Affine::translation(
+                          layout.border.left
+                            + layout.padding.left
+                            + glyph.x
+                            + bitmap.placement.left as f32,
+                          layout.border.top + layout.padding.top + glyph.y
+                            - bitmap.placement.top as f32,
+                        );
+
+                      svg.draw_image(
+                        &data_uri,
+                        taffy::Size {
+                          width: width as f32,
+                          height: height as f32,
+                        },
+                        transform,
+                      );
+                    }
+                  }
                 }
               }
             }

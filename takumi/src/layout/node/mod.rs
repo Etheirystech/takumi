@@ -325,11 +325,44 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
   /// Draws the inset box shadow of the node as SVG.
   fn draw_inset_box_shadow_svg(
     &self,
-    _context: &RenderContext,
-    _svg: &mut crate::rendering::SvgRenderer,
-    _layout: Layout,
+    context: &RenderContext,
+    svg: &mut crate::rendering::SvgRenderer,
+    layout: Layout,
   ) -> Result<()> {
-    // TODO: Implement inset shadows in SVG
+    let Some(box_shadow) = context.style.box_shadow.as_ref() else {
+      return Ok(());
+    };
+
+    let border_radius = BorderProperties::from_context(context, layout.size, layout.border);
+
+    for shadow in box_shadow.iter() {
+      if !shadow.inset {
+        continue;
+      }
+
+      let shadow =
+        SizedShadow::from_box_shadow(*shadow, &context.sizing, context.current_color, layout.size);
+
+      let color = format!(
+        "rgba({},{},{},{})",
+        shadow.color.0[0],
+        shadow.color.0[1],
+        shadow.color.0[2],
+        shadow.color.0[3] as f32 / 255.0
+      );
+
+      let filter =
+        svg.add_inset_shadow_filter(shadow.offset_x, shadow.offset_y, shadow.blur_radius, &color);
+
+      svg.fill_rect_with_filter(
+        layout.size,
+        shadow.color,
+        &filter,
+        border_radius,
+        context.transform,
+      );
+    }
+
     Ok(())
   }
 
@@ -449,10 +482,36 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
       return Ok(());
     }
 
-    let border_radius = BorderProperties::from_context(context, layout.size, layout.border);
-
-    // TODO: Handle BackgroundClip for SVG background images
-    // For now we only support BorderBox clip
+    let (draw_size, draw_transform, border_radius) = match context.style.background_clip {
+      BackgroundClip::BorderBox | BackgroundClip::BorderArea => {
+        let radius = BorderProperties::from_context(context, layout.size, layout.border);
+        (layout.size, context.transform, radius)
+      }
+      BackgroundClip::PaddingBox => {
+        let mut radius = BorderProperties::from_context(context, layout.size, layout.border);
+        radius.inset_by_border_width();
+        let size = Size {
+          width: layout.size.width - layout.border.left - layout.border.right,
+          height: layout.size.height - layout.border.top - layout.border.bottom,
+        };
+        let transform =
+          context.transform * Affine::translation(layout.border.left, layout.border.top);
+        (size, transform, radius)
+      }
+      BackgroundClip::ContentBox => {
+        let mut radius = BorderProperties::from_context(context, layout.size, layout.border);
+        radius.inset_by_border_width();
+        radius.expand_by(layout.padding.map(|size| -size));
+        let size = layout.content_box_size();
+        let transform = context.transform
+          * Affine::translation(
+            layout.padding.left + layout.border.left,
+            layout.padding.top + layout.border.top,
+          );
+        (size, transform, radius)
+      }
+      BackgroundClip::Text => return Ok(()),
+    };
 
     for image in background_image.iter() {
       match image {
@@ -460,10 +519,10 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
           let rad = (*gradient.angle).to_radians();
           let (dir_x, dir_y) = (rad.sin(), -rad.cos());
 
-          let cx = layout.size.width / 2.0;
-          let cy = layout.size.height / 2.0;
+          let cx = draw_size.width / 2.0;
+          let cy = draw_size.height / 2.0;
           let max_extent =
-            ((layout.size.width * dir_x.abs()) + (layout.size.height * dir_y.abs())) / 2.0;
+            ((draw_size.width * dir_x.abs()) + (draw_size.height * dir_y.abs())) / 2.0;
 
           let x1 = cx - dir_x * max_extent;
           let y1 = cy - dir_y * max_extent;
@@ -492,14 +551,101 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
             &stops,
           );
 
-          svg.fill_rect_with_fill(layout.size, &fill, border_radius, context.transform);
+          svg.fill_rect_with_fill(draw_size, &fill, border_radius, draw_transform);
+        }
+        BackgroundImage::Radial(gradient) => {
+          let center_point = gradient.center.to_point(&context.sizing, draw_size);
+          let cx = center_point.x;
+          let cy = center_point.y;
+
+          let dx_left = cx;
+          let dx_right = draw_size.width - cx;
+          let dy_top = cy;
+          let dy_bottom = draw_size.height - cy;
+
+          let (radius_x, radius_y) = match (gradient.shape, gradient.size) {
+            (super::style::RadialShape::Ellipse, super::style::RadialSize::FarthestCorner) => {
+              (dx_left.max(dx_right), dy_top.max(dy_bottom))
+            }
+            (super::style::RadialShape::Circle, super::style::RadialSize::FarthestCorner) => {
+              let candidates = [
+                (cx, cy),
+                (cx, dy_bottom),
+                (dx_right, cy),
+                (dx_right, dy_bottom),
+              ];
+              let r = candidates
+                .iter()
+                .map(|(dx, dy)| (dx * dx + dy * dy).sqrt())
+                .fold(0.0_f32, f32::max);
+              (r, r)
+            }
+            (super::style::RadialShape::Ellipse, super::style::RadialSize::FarthestSide) => {
+              (dx_left.max(dx_right), dy_top.max(dy_bottom))
+            }
+            (super::style::RadialShape::Ellipse, super::style::RadialSize::ClosestSide) => {
+              (dx_left.min(dx_right), dy_top.min(dy_bottom))
+            }
+            (super::style::RadialShape::Circle, super::style::RadialSize::FarthestSide) => {
+              let r = dx_left.max(dx_right).max(dy_top.max(dy_bottom));
+              (r, r)
+            }
+            (super::style::RadialShape::Circle, super::style::RadialSize::ClosestSide) => {
+              let r = dx_left.min(dx_right).min(dy_top.min(dy_bottom));
+              (r, r)
+            }
+            (super::style::RadialShape::Ellipse, super::style::RadialSize::ClosestCorner) => {
+              (dx_left.max(dx_right), dy_top.max(dy_bottom))
+            }
+            (super::style::RadialShape::Circle, super::style::RadialSize::ClosestCorner) => {
+              let candidates = [
+                (cx, cy),
+                (cx, dy_bottom),
+                (dx_right, cy),
+                (dx_right, dy_bottom),
+              ];
+              let r = candidates
+                .iter()
+                .map(|(dx, dy)| (dx * dx + dy * dy).sqrt())
+                .fold(f32::INFINITY, f32::min);
+              (r, r)
+            }
+          };
+
+          let r = radius_x.max(radius_y);
+          let radius_scale = radius_x.max(radius_y);
+          let resolved_stops =
+            resolve_stops_along_axis(&gradient.stops, radius_scale.max(1e-6), context);
+
+          let mut stops = Vec::new();
+          for stop in resolved_stops {
+            let color = format!(
+              "rgba({},{},{},{})",
+              stop.color.0[0],
+              stop.color.0[1],
+              stop.color.0[2],
+              stop.color.0[3] as f32 / 255.0
+            );
+            stops.push((stop.position / radius_scale.max(1e-6), color));
+          }
+
+          let fill = svg.add_radial_gradient(
+            &format!("{}", cx),
+            &format!("{}", cy),
+            &format!("{}", r),
+            None,
+            None,
+            &stops,
+          );
+
+          svg.fill_rect_with_fill(draw_size, &fill, border_radius, draw_transform);
         }
         BackgroundImage::Url(url) => {
           // For now, we just draw the image without tiling support
-          svg.draw_image(url, layout.size, context.transform);
+          svg.draw_image(url, draw_size, draw_transform);
         }
         _ => {
-          // TODO: Implement radial gradients and noise in SVG
+          // TODO: Implement noise in SVG
         }
       }
     }

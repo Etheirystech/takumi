@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
-  <defs>
+    <rect x="0" y="0" width="1200" height="630" fill="url(#grad1)"/>
+    <rect x="0" y="0" width="1200" height="630" fill="url(#radialGrad2)"/>
+<defs>
     <linearGradient id="grad1" x1="142.50003" y1="772.5" x2="1057.5" y2="-142.49997" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="rgba(0,0,255,1)" />
-      <stop offset="100%" stop-color="rgba(0,255,0,1)" />
+        <stop offset="0%" stop-color="rgba(0,0,255,1)"/>
+        <stop offset="100%" stop-color="rgba(0,255,0,1)"/>
     </linearGradient>
-  </defs>
-<rect x="0" y="0" width="1200" height="630" fill="url(#grad1)"/>
+    <radialGradient id="radialGrad2" cx="600" cy="315" r="677.66144" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="rgba(0,0,0,1)"/>
+        <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </radialGradient>
+</defs>
 </svg>

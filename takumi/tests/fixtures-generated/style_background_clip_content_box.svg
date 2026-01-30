@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630">
-<rect x="0" y="0" width="1200" height="630" fill="rgba(200,200,200,1)"/>
-<g transform="matrix(1,0,0,1,472,235)">
-  <rect x="0" y="0" width="256" height="160" fill="rgba(34,197,94,1)" rx="8"/>
-</g>
-<rect x="10" y="10" width="236" height="140" fill="none" stroke="rgba(0,0,0,1)" stroke-width="10" rx="8" transform="matrix(1,0,0,1,472,235)"/>
+    <rect x="0" y="0" width="1200" height="630" fill="rgba(200,200,200,1.000)"/>
+    <g transform="matrix(1,0,0,1,472,235)">
+        <rect x="0" y="0" width="256" height="160" fill="rgba(34,197,94,1.000)" rx="8"/>
+    </g>
+    <g transform="matrix(1,0,0,1,472,235)">
+        <rect x="10" y="10" width="236" height="140" fill="none" stroke="rgba(0,0,0,1.000)" stroke-width="10" rx="8"/>
+    </g>
+
 </svg>
