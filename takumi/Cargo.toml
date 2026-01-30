@@ -22,6 +22,7 @@ color = "0.3"
 thiserror = "2.0"
 rustc-hash = "2.1"
 wide = "1.1"
+xmlwriter = "0.1"
 
 [dependencies.fast_image_resize]
 version = "6.0"
@@ -80,8 +81,6 @@ version = "0.46"
 default-features = false
 optional = true
 
-[dependencies.xmlwriter]
-version = "0.1"
 
 [dev-dependencies.tiny-skia]
 version = "0.11"
