@@ -43,7 +43,7 @@ pub(crate) fn rasterize_layers(
           Affine::translation(x as f32, y as f32) * transform,
           context.style.image_rendering,
           layer.blend_mode,
-          None,
+          &[],
           mask_memory,
         );
       }
@@ -74,6 +74,7 @@ impl GenericImageView for ColorTile {
 pub(crate) enum BackgroundTile {
   Linear(LinearGradientTile),
   Radial(RadialGradientTile),
+  Conic(ConicGradientTile),
   Noise(NoiseV1Tile),
   Image(RgbaImage),
   Color(ColorTile),
@@ -86,6 +87,7 @@ impl GenericImageView for BackgroundTile {
     match self {
       Self::Linear(t) => t.dimensions(),
       Self::Radial(t) => t.dimensions(),
+      Self::Conic(t) => t.dimensions(),
       Self::Noise(t) => t.dimensions(),
       Self::Image(t) => t.dimensions(),
       Self::Color(t) => t.dimensions(),
@@ -96,9 +98,30 @@ impl GenericImageView for BackgroundTile {
     match self {
       Self::Linear(t) => t.get_pixel(x, y),
       Self::Radial(t) => t.get_pixel(x, y),
+      Self::Conic(t) => t.get_pixel(x, y),
       Self::Noise(t) => t.get_pixel(x, y),
       Self::Image(t) => *t.get_pixel(x, y),
       Self::Color(t) => t.color,
+    }
+  }
+}
+
+impl BackgroundTile {
+  /// Convert into an owned `RgbaImage`.
+  /// For non-Image variants, rasterizes the tile into an image.
+  pub(crate) fn into_image(self) -> RgbaImage {
+    match self {
+      BackgroundTile::Image(img) => img,
+      other => {
+        let (w, h) = other.dimensions();
+        let mut img = RgbaImage::new(w, h);
+        for y in 0..h {
+          for x in 0..w {
+            img.put_pixel(x, y, other.get_pixel(x, y));
+          }
+        }
+        img
+      }
     }
   }
 }
@@ -236,6 +259,9 @@ pub(crate) fn render_tile(
       gradient, tile_w, tile_h, context,
     ))),
     BackgroundImage::Radial(gradient) => Some(BackgroundTile::Radial(RadialGradientTile::new(
+      gradient, tile_w, tile_h, context,
+    ))),
+    BackgroundImage::Conic(gradient) => Some(BackgroundTile::Conic(ConicGradientTile::new(
       gradient, tile_w, tile_h, context,
     ))),
     BackgroundImage::Noise(noise) => Some(BackgroundTile::Noise(NoiseV1Tile::new(

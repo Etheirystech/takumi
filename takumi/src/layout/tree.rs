@@ -34,6 +34,7 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
     node.draw_background(&self.context, canvas, layout)?;
     node.draw_inset_box_shadow(&self.context, canvas, layout)?;
     node.draw_border(&self.context, canvas, layout)?;
+    node.draw_outline(&self.context, canvas, layout)?;
     Ok(())
   }
 
@@ -94,15 +95,17 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
   }
 
   pub fn is_inline(&self) -> bool {
-    self.context.style.display == Display::Inline
+    self.context.style.display.is_inline()
   }
 
   pub fn should_create_inline_layout(&self) -> bool {
-    self.context.style.display == Display::Block
-      && self
-        .children
-        .as_ref()
-        .is_some_and(|children| !children.is_empty() && children.iter().all(NodeTree::is_inline))
+    matches!(
+      self.context.style.display,
+      Display::Block | Display::InlineBlock
+    ) && self
+      .children
+      .as_ref()
+      .is_some_and(|children| !children.is_empty() && children.iter().all(NodeTree::is_inline))
   }
 
   pub fn from_node(parent_context: &RenderContext<'g>, node: N) -> Self {
@@ -118,12 +121,19 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
   }
 
   fn from_node_impl(parent_context: &RenderContext<'g>, mut node: N) -> Self {
-    let style = node.create_inherited_style(&parent_context.style, parent_context.sizing.viewport);
+    let mut style =
+      node.create_inherited_style(&parent_context.style, parent_context.sizing.viewport);
 
     let font_size = style
       .font_size
       .map(|font_size| font_size.to_px(&parent_context.sizing, parent_context.sizing.font_size))
       .unwrap_or(parent_context.sizing.font_size);
+
+    // Clear the raw font_size from InheritedStyle after resolving to px.
+    // Children that don't set their own fontSize will fall through to
+    // `unwrap_or(parent_context.sizing.font_size)` which holds the correctly
+    // resolved px value, preventing em/rem values from compounding on inheritance.
+    style.font_size = None;
 
     let current_color = style.color.resolve(parent_context.current_color);
 
@@ -168,7 +178,8 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
 
     let has_inline = children.iter().any(NodeTree::is_inline);
     let has_block = children.iter().any(|child| !child.is_inline());
-    let needs_anonymous_boxes = !context.style.display.is_inline() && has_inline && has_block;
+    let needs_anonymous_boxes =
+      !context.style.display.is_inline_flow_through() && has_inline && has_block;
 
     if !needs_anonymous_boxes {
       return Self {

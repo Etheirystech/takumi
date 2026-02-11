@@ -339,6 +339,15 @@ impl MaskMemory {
   }
 }
 
+/// Stores a rasterized background from an ancestor element that has `background-clip: text`.
+/// Descendant inline layouts use this to clip their text to the ancestor's background.
+pub(crate) struct TextClipBackground {
+  pub(crate) image: RgbaImage,
+  /// The transform of the ancestor element that owns this background.
+  /// Used to compute the descendant's offset within the ancestor for correct sampling.
+  pub(crate) transform: Affine,
+}
+
 /// A canvas that can be used to draw images onto.
 pub struct Canvas {
   pub(crate) image: RgbaImage,
@@ -346,6 +355,12 @@ pub struct Canvas {
   // Since canvas is shared with mutable borrows everywhere already,
   // we can just include the memory here instead of making the function argument bloated.
   pub(crate) mask_memory: MaskMemory,
+  /// Stack of ancestor text clip backgrounds for `background-clip: text` on non-inline containers.
+  pub(crate) text_clip_backgrounds: SmallVec<[TextClipBackground; 1]>,
+  /// When set, restricts inline text drawing to the given phase.
+  /// Used by containers with `background-clip: text` to render all children's
+  /// strokes before any fills, matching CSS painting order.
+  pub(crate) text_draw_phase: Option<super::DrawPhase>,
 }
 
 impl Canvas {
@@ -355,6 +370,8 @@ impl Canvas {
       image: RgbaImage::new(size.width, size.height),
       constrains: SmallVec::new(),
       mask_memory: MaskMemory::default(),
+      text_clip_backgrounds: SmallVec::new(),
+      text_draw_phase: None,
     }
   }
 
@@ -370,6 +387,14 @@ impl Canvas {
 
   pub(crate) fn pop_constrain(&mut self) {
     self.constrains.pop();
+  }
+
+  pub(crate) fn push_text_clip_background(&mut self, clip: TextClipBackground) {
+    self.text_clip_backgrounds.push(clip);
+  }
+
+  pub(crate) fn pop_text_clip_background(&mut self) {
+    self.text_clip_backgrounds.pop();
   }
 
   pub(crate) fn into_inner(self) -> RgbaImage {
@@ -399,7 +424,7 @@ impl Canvas {
       transform,
       algorithm,
       mode,
-      self.constrains.last(),
+      &self.constrains,
       &mut self.mask_memory,
     );
   }
@@ -409,6 +434,10 @@ impl Canvas {
 ///
 /// If the color is fully transparent (alpha = 0), no operation is performed.
 /// Otherwise, the pixel is blended with the existing canvas pixel using alpha blending.
+///
+/// All active constraints in the stack are checked — each constraint's alpha
+/// is combined multiplicatively so that nested clip-path + mask-image etc.
+/// all contribute to the final pixel alpha.
 #[inline(always)]
 fn draw_pixel(
   canvas: &mut RgbaImage,
@@ -416,18 +445,23 @@ fn draw_pixel(
   y: u32,
   mut color: Rgba<u8>,
   mode: BlendMode,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
 ) {
   if color.0[3] == 0 {
     return;
   }
 
-  if let Some(constrain_alpha) = constrain.map(|c| c.get_alpha(x, y)) {
-    if constrain_alpha == 0 {
+  for constrain in constrains {
+    let alpha = constrain.get_alpha(x, y);
+    if alpha == 0 {
       return;
     }
-
-    apply_mask_alpha_to_pixel(&mut color, constrain_alpha);
+    if alpha < 255 {
+      apply_mask_alpha_to_pixel(&mut color, alpha);
+      if color.0[3] == 0 {
+        return;
+      }
+    }
   }
 
   // image-rs blend will skip the operation if the source color is fully transparent
@@ -460,7 +494,7 @@ pub(crate) fn draw_mask<C: Into<Rgba<u8>>>(
   placement: Placement,
   color: C,
   mode: BlendMode,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
 ) {
   if mask.is_empty() {
     return;
@@ -482,7 +516,7 @@ pub(crate) fn draw_mask<C: Into<Rgba<u8>>>(
 
   let color = color.into();
 
-  overlay_area(canvas, offset, top_size, mode, constrain, |x, y| {
+  overlay_area(canvas, offset, top_size, mode, constrains, |x, y| {
     let alpha = mask[mask_index_from_coord(x, y, placement.width)];
 
     let mut pixel = color;
@@ -526,7 +560,7 @@ pub(crate) fn overlay_image<I: GenericImageView<Pixel = Rgba<u8>>>(
   transform: Affine,
   algorithm: ImageScalingAlgorithm,
   mode: BlendMode,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
   mask_memory: &mut MaskMemory,
 ) {
   let (width, height) = image.dimensions();
@@ -536,7 +570,7 @@ pub(crate) fn overlay_image<I: GenericImageView<Pixel = Rgba<u8>>>(
   if transform.only_translation() && border.is_zero() {
     let translation = transform.decompose_translation();
 
-    return overlay_area(canvas, translation, size, mode, constrain, |x, y| {
+    return overlay_area(canvas, translation, size, mode, constrains, |x, y| {
       image.get_pixel(x, y)
     });
   }
@@ -594,7 +628,7 @@ pub(crate) fn overlay_image<I: GenericImageView<Pixel = Rgba<u8>>>(
       height: placement.height,
     },
     mode,
-    constrain,
+    constrains,
     get_original_pixel,
   );
 }
@@ -609,7 +643,7 @@ pub(crate) fn overlay_area(
   offset: Point<f32>,
   top_size: Size<u32>,
   mode: BlendMode,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
   f: impl Fn(u32, u32) -> Rgba<u8>,
 ) {
   if top_size.width == 0 || top_size.height == 0 {
@@ -644,7 +678,14 @@ pub(crate) fn overlay_area(
       let src_x = (dest_x - offset_x) as u32;
       let pixel = f(src_x, src_y);
 
-      draw_pixel(bottom, dest_x as u32, dest_y as u32, pixel, mode, constrain);
+      draw_pixel(
+        bottom,
+        dest_x as u32,
+        dest_y as u32,
+        pixel,
+        mode,
+        constrains,
+      );
     }
   }
 }

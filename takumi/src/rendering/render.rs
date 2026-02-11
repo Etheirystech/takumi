@@ -13,14 +13,15 @@ use crate::{
     inline::{InlineLayoutStage, create_inline_constraint, create_inline_layout},
     node::Node,
     style::{
-      Affine, Filter, ImageScalingAlgorithm, InheritedStyle, SpacePair, apply_backdrop_filter,
-      apply_filters,
+      Affine, BackgroundClip, Filter, ImageScalingAlgorithm, InheritedStyle, SpacePair,
+      apply_backdrop_filter, apply_filters,
     },
     tree::NodeTree,
   },
   rendering::{
-    BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, RenderContext, Sizing,
-    draw_debug_border, inline_drawing::fix_inline_box_y, overlay_image,
+    BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, DrawPhase, RenderContext,
+    Sizing, TextClipBackground, collect_background_layers, draw_debug_border,
+    inline_drawing::fix_inline_box_y, overlay_image, rasterize_layers,
   },
   resources::image::ImageSource,
 };
@@ -247,7 +248,7 @@ pub fn render<'g, N: Node<N>>(options: RenderOptions<'g, N>) -> Result<RgbaImage
   Ok(canvas.into_inner())
 }
 
-fn apply_transform(
+pub(crate) fn apply_transform(
   transform: &mut Affine,
   style: &InheritedStyle,
   border_box: Size<f32>,
@@ -387,10 +388,33 @@ fn render_node<'g, Nodes: Node<Nodes>>(
   let opacity = node.context.style.opacity;
   let mix_blend_mode = node.context.style.mix_blend_mode;
   let should_create_inline = node.should_create_inline_layout();
+  let background_clip = node.context.style.background_clip;
 
   if opacity.0 < 1.0 {
     filters.push(Filter::Opacity(opacity));
   }
+
+  // Push text clip background for non-inline containers with background-clip: text.
+  // This lets descendant inline layouts use the ancestor's background as clip image.
+  let pushed_text_clip = if background_clip == BackgroundClip::Text && !should_create_inline {
+    let layers = collect_background_layers(&node.context, layout.size)?;
+    if let Some(rasterized) = rasterize_layers(
+      layers,
+      layout.size.map(|x| x as u32),
+      &node.context,
+      BorderProperties::default(),
+      Affine::IDENTITY,
+      &mut canvas.mask_memory,
+    ) {
+      let image = rasterized.into_image();
+      canvas.push_text_clip_background(TextClipBackground { image, transform });
+      true
+    } else {
+      false
+    }
+  } else {
+    false
+  };
 
   if should_create_inline {
     node.draw_inline(canvas, layout)?;
@@ -398,9 +422,30 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     // Drop the node context reference so we can borrow taffy again
     let _ = node;
 
-    for child_id in taffy.children(node_id)? {
-      render_node(taffy, child_id, canvas, transform)?;
+    if pushed_text_clip {
+      // Two-pass rendering for containers with background-clip: text.
+      // First pass: draw all children's text strokes (shadows, faux-bold, text-stroke).
+      // Second pass: draw all children's text fills.
+      // This prevents a later child's stroke from covering an earlier child's fill.
+      let children = taffy.children(node_id)?;
+      canvas.text_draw_phase = Some(DrawPhase::Stroke);
+      for &child_id in &children {
+        render_node(taffy, child_id, canvas, transform)?;
+      }
+      canvas.text_draw_phase = Some(DrawPhase::Fill);
+      for &child_id in &children {
+        render_node(taffy, child_id, canvas, transform)?;
+      }
+      canvas.text_draw_phase = None;
+    } else {
+      for child_id in taffy.children(node_id)? {
+        render_node(taffy, child_id, canvas, transform)?;
+      }
     }
+  }
+
+  if pushed_text_clip {
+    canvas.pop_text_clip_background();
   }
 
   apply_filters(&mut canvas.image, &sizing, current_color, filters.iter());
@@ -414,7 +459,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
       Affine::IDENTITY,
       ImageScalingAlgorithm::Auto,
       mix_blend_mode,
-      None,
+      &[],
       &mut canvas.mask_memory,
     );
 

@@ -39,6 +39,19 @@ impl<'a> GenericImageView for SwashImageView<'a> {
   }
 }
 
+/// Controls which drawing operations are performed per glyph.
+///
+/// Text rendering is split into two phases so that all strokes render
+/// before any fills across a glyph run, matching CSS painting order
+/// where text-stroke is behind text fill.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DrawPhase {
+  /// Draw text shadows, faux-bold, and text strokes.
+  Stroke,
+  /// Draw glyph fills.
+  Fill,
+}
+
 fn invert_y_coordinate(command: Command) -> Command {
   match command {
     Command::MoveTo(point) => Command::MoveTo((point.x, -point.y).into()),
@@ -63,10 +76,11 @@ pub(crate) fn draw_decoration(
   size: f32,
   layout: Layout,
   transform: Affine,
+  faux_stretch_factor: f32,
 ) {
   let tile = ColorTile {
     color: color.into(),
-    width: glyph_run.advance() as u32,
+    width: (glyph_run.advance() * faux_stretch_factor) as u32,
     height: size as u32,
   };
 
@@ -83,6 +97,7 @@ pub(crate) fn draw_decoration(
   );
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_glyph_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
   glyph: &ResolvedGlyph,
   canvas: &mut Canvas,
@@ -90,11 +105,31 @@ pub(crate) fn draw_glyph_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
   mut transform: Affine,
   inline_offset: Point<f32>,
   clip_image: &I,
+  faux_bold_width: f32,
+  phase: DrawPhase,
+  clip_offset: Point<f32>,
+  faux_stretch_factor: f32,
 ) {
+  // clip_sample_offset combines inline_offset (glyph position) with clip_offset
+  // (ancestor crop margin). Used only for sampling the clip image, not for the
+  // glyph rendering transform.
+  let clip_sample_offset = Point {
+    x: inline_offset.x + clip_offset.x,
+    y: inline_offset.y + clip_offset.y,
+  };
+
   transform *= Affine::translation(inline_offset.x, inline_offset.y);
+  if faux_stretch_factor != 1.0 {
+    transform *= Affine::scale(faux_stretch_factor, 1.0);
+  }
 
   match glyph {
     ResolvedGlyph::Image(bitmap) => {
+      // Image glyphs (emojis) have no stroke; draw only in fill phase.
+      if phase != DrawPhase::Fill {
+        return;
+      }
+
       transform *= Affine::translation(bitmap.placement.left as f32, -bitmap.placement.top as f32);
 
       let mask = bitmap
@@ -117,12 +152,12 @@ pub(crate) fn draw_glyph_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
           height: bitmap.placement.height,
         },
         BlendMode::Normal,
-        None,
+        &[],
         |x, y| {
           let alpha = mask[mask_index_from_coord(x, y, bitmap.placement.width)];
 
-          let source_x = (x as i32 + inline_offset.x as i32 + bitmap.placement.left) as u32;
-          let source_y = (y as i32 + inline_offset.y as i32 - bitmap.placement.top) as u32;
+          let source_x = (x as i32 + clip_sample_offset.x as i32 + bitmap.placement.left) as u32;
+          let source_y = (y as i32 + clip_sample_offset.y as i32 - bitmap.placement.top) as u32;
 
           if source_x >= fill_dimensions.0 || source_y >= fill_dimensions.1 {
             return Color::transparent().into();
@@ -152,49 +187,70 @@ pub(crate) fn draw_glyph_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
 
       let paths = collect_outline_paths(outline);
 
-      draw_text_shadow(canvas, style, transform, &paths);
-
-      let (mask, placement) = canvas.mask_memory.render(&paths, Some(transform), None);
-
-      overlay_area(
-        &mut canvas.image,
-        Point {
-          x: placement.left as f32,
-          y: placement.top as f32,
-        },
-        Size {
-          width: placement.width,
-          height: placement.height,
-        },
-        BlendMode::Normal,
-        canvas.constrains.last(),
-        |x, y| {
-          let alpha = mask[mask_index_from_coord(x, y, placement.width)];
-
-          if alpha == 0 {
-            return Color::transparent().into();
-          }
-
-          let sampled_pixel = sample_transformed_pixel(
-            clip_image,
+      match phase {
+        DrawPhase::Stroke => {
+          draw_text_shadow(canvas, style, transform, &paths);
+          draw_faux_bold_clip_image(
+            canvas,
+            style,
+            transform,
             inverse,
-            style.parent.image_rendering,
-            (x as i32 + placement.left) as f32,
-            (y as i32 + placement.top) as f32,
-            inline_offset,
+            &paths,
+            faux_bold_width,
+            clip_image,
+            clip_sample_offset,
           );
+          draw_text_stroke_clip_image(
+            canvas,
+            style,
+            transform,
+            &paths,
+            clip_image,
+            clip_sample_offset,
+          );
+        }
+        DrawPhase::Fill => {
+          let (mask, placement) = canvas.mask_memory.render(&paths, Some(transform), None);
 
-          let Some(mut pixel) = sampled_pixel else {
-            return Color::transparent().into();
-          };
+          overlay_area(
+            &mut canvas.image,
+            Point {
+              x: placement.left as f32,
+              y: placement.top as f32,
+            },
+            Size {
+              width: placement.width,
+              height: placement.height,
+            },
+            BlendMode::Normal,
+            &canvas.constrains,
+            |x, y| {
+              let alpha = mask[mask_index_from_coord(x, y, placement.width)];
 
-          apply_mask_alpha_to_pixel(&mut pixel, alpha);
+              if alpha == 0 {
+                return Color::transparent().into();
+              }
 
-          pixel
-        },
-      );
+              let sampled_pixel = sample_transformed_pixel(
+                clip_image,
+                inverse,
+                style.parent.image_rendering,
+                (x as i32 + placement.left) as f32,
+                (y as i32 + placement.top) as f32,
+                clip_sample_offset,
+              );
 
-      draw_text_stroke_clip_image(canvas, style, transform, &paths, clip_image, inline_offset);
+              let Some(mut pixel) = sampled_pixel else {
+                return Color::transparent().into();
+              };
+
+              apply_mask_alpha_to_pixel(&mut pixel, alpha);
+
+              pixel
+            },
+          );
+        }
+      }
     }
   }
 }
@@ -208,11 +264,22 @@ pub(crate) fn draw_glyph(
   inline_offset: Point<f32>,
   color: Color,
   palette: Option<ColorPalette>,
+  faux_bold_width: f32,
+  phase: DrawPhase,
+  faux_stretch_factor: f32,
 ) -> Result<()> {
   transform *= Affine::translation(inline_offset.x, inline_offset.y);
+  if faux_stretch_factor != 1.0 {
+    transform *= Affine::scale(faux_stretch_factor, 1.0);
+  }
 
   match glyph {
     ResolvedGlyph::Image(bitmap) => {
+      // Image glyphs (emojis) have no stroke; draw only in fill phase.
+      if phase != DrawPhase::Fill {
+        return Ok(());
+      }
+
       transform *= Affine::translation(bitmap.placement.left as f32, -bitmap.placement.top as f32);
 
       let image = SwashImageView(bitmap);
@@ -228,34 +295,39 @@ pub(crate) fn draw_glyph(
     ResolvedGlyph::Outline(outline) => {
       let paths = collect_outline_paths(outline);
 
-      draw_text_shadow(canvas, style, transform, &paths);
+      match phase {
+        DrawPhase::Stroke => {
+          draw_text_shadow(canvas, style, transform, &paths);
+          draw_faux_bold(canvas, transform, &paths, color, faux_bold_width);
+          draw_text_stroke(canvas, style, transform, &paths);
+        }
+        DrawPhase::Fill => {
+          if outline.is_color()
+            && let Some(palette) = palette
+          {
+            draw_color_outline_image(
+              &mut canvas.image,
+              &mut canvas.mask_memory,
+              outline,
+              palette,
+              transform,
+              &canvas.constrains,
+              color.0[3],
+            );
+          } else {
+            let (mask, placement) = canvas.mask_memory.render(&paths, Some(transform), None);
 
-      if outline.is_color()
-        && let Some(palette) = palette
-      {
-        draw_color_outline_image(
-          &mut canvas.image,
-          &mut canvas.mask_memory,
-          outline,
-          palette,
-          transform,
-          canvas.constrains.last(),
-          color.0[3],
-        );
-      } else {
-        let (mask, placement) = canvas.mask_memory.render(&paths, Some(transform), None);
-
-        draw_mask(
-          &mut canvas.image,
-          mask,
-          placement,
-          color,
-          BlendMode::Normal,
-          canvas.constrains.last(),
-        );
+            draw_mask(
+              &mut canvas.image,
+              mask,
+              placement,
+              color,
+              BlendMode::Normal,
+              &canvas.constrains,
+            );
+          }
+        }
       }
-
-      draw_text_stroke(canvas, style, transform, &paths);
     }
   }
 
@@ -298,7 +370,7 @@ fn draw_text_stroke_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
       height: stroke_placement.height,
     },
     BlendMode::Normal,
-    canvas.constrains.last(),
+    &canvas.constrains,
     |x, y| {
       let alpha = stroke_mask[mask_index_from_coord(x, y, stroke_placement.width)];
 
@@ -359,7 +431,99 @@ fn draw_text_stroke(
     stroke_placement,
     style.text_stroke_color,
     BlendMode::Normal,
-    canvas.constrains.last(),
+    &canvas.constrains,
+  );
+}
+
+/// Draws a faux-bold stroke to thicken glyphs when the requested font weight
+/// exceeds what the font file provides (e.g., requesting weight 800 on a
+/// weight-400-only font). Uses the fill color so the stroke blends seamlessly
+/// with the glyph fill drawn on top.
+fn draw_faux_bold(
+  canvas: &mut Canvas,
+  transform: Affine,
+  paths: &[Command],
+  color: Color,
+  faux_bold_width: f32,
+) {
+  if faux_bold_width <= 0.0 {
+    return;
+  }
+
+  let stroke = Stroke::new(faux_bold_width);
+
+  let (mask, placement) = canvas
+    .mask_memory
+    .render(paths, Some(transform), Some(stroke.into()));
+
+  draw_mask(
+    &mut canvas.image,
+    mask,
+    placement,
+    color,
+    BlendMode::Normal,
+    &canvas.constrains,
+  );
+}
+
+/// Faux-bold for the background-clip:text path, sampling from the clip image.
+#[allow(clippy::too_many_arguments)]
+fn draw_faux_bold_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
+  canvas: &mut Canvas,
+  style: &SizedFontStyle,
+  transform: Affine,
+  inverse: Affine,
+  paths: &[Command],
+  faux_bold_width: f32,
+  clip_image: &I,
+  inline_offset: Point<f32>,
+) {
+  if faux_bold_width <= 0.0 {
+    return;
+  }
+
+  let stroke = Stroke::new(faux_bold_width);
+
+  let (mask, placement) = canvas
+    .mask_memory
+    .render(paths, Some(transform), Some(stroke.into()));
+
+  overlay_area(
+    &mut canvas.image,
+    Point {
+      x: placement.left as f32,
+      y: placement.top as f32,
+    },
+    Size {
+      width: placement.width,
+      height: placement.height,
+    },
+    BlendMode::Normal,
+    &canvas.constrains,
+    |x, y| {
+      let alpha = mask[mask_index_from_coord(x, y, placement.width)];
+
+      if alpha == 0 {
+        return Color::transparent().into();
+      }
+
+      let sampled_pixel = sample_transformed_pixel(
+        clip_image,
+        inverse,
+        style.parent.image_rendering,
+        (x as i32 + placement.left) as f32,
+        (y as i32 + placement.top) as f32,
+        inline_offset,
+      );
+
+      let Some(mut pixel) = sampled_pixel else {
+        return Color::transparent().into();
+      };
+
+      apply_mask_alpha_to_pixel(&mut pixel, alpha);
+
+      pixel
+    },
   );
 }
 
@@ -377,7 +541,7 @@ fn draw_text_shadow(
     shadow.draw_outset(
       &mut canvas.image,
       &mut canvas.mask_memory,
-      canvas.constrains.last(),
+      &canvas.constrains,
       paths,
       transform,
       Default::default(),
@@ -401,7 +565,7 @@ fn draw_color_outline_image(
   outline: &Outline,
   palette: ColorPalette,
   transform: Affine,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
   opacity: u8,
 ) {
   if opacity == 0 {
@@ -427,7 +591,14 @@ fn draw_color_outline_image(
 
     let (mask, placement) = mask_memory.render(&paths, Some(transform), None);
 
-    draw_mask(canvas, mask, placement, color, BlendMode::Normal, constrain);
+    draw_mask(
+      canvas,
+      mask,
+      placement,
+      color,
+      BlendMode::Normal,
+      constrains,
+    );
   }
 }
 
@@ -473,8 +644,10 @@ pub(crate) fn apply_white_space_collapse<'a>(
   match collapse {
     WhiteSpaceCollapse::Preserve => Cow::Borrowed(input),
 
-    // Collapse sequences of whitespace (spaces, tabs, line breaks) into a single space
-    // and trim leading/trailing spaces.
+    // Collapse sequences of whitespace (spaces, tabs, line breaks) into a single space.
+    // Do NOT trim leading/trailing spaces here — in CSS, inter-element spaces are
+    // preserved within a line. Line-edge whitespace trimming is handled by the
+    // text layout engine (parley), not at the per-span level.
     WhiteSpaceCollapse::Collapse => {
       let mut out = String::with_capacity(input.len());
       let mut last_was_ws = false;
@@ -491,7 +664,7 @@ pub(crate) fn apply_white_space_collapse<'a>(
         }
       }
 
-      Cow::Owned(out.trim().to_string())
+      Cow::Owned(out)
     }
 
     // Preserve sequences of spaces/tabs but remove line breaks (replace them with a single space).

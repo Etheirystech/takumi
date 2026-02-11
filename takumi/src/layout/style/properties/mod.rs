@@ -14,10 +14,12 @@ mod border;
 mod box_shadow;
 mod clip_path;
 mod color;
+mod conic_gradient;
 mod filter;
 mod flex;
 mod flex_grow;
 mod font_feature_settings;
+mod font_stretch;
 mod font_style;
 mod font_variation_settings;
 mod font_weight;
@@ -28,6 +30,7 @@ mod line_clamp;
 mod line_height;
 mod linear_gradient;
 mod noise_v1;
+mod outline;
 mod overflow;
 mod overflow_wrap;
 mod percentage_number;
@@ -56,11 +59,13 @@ pub use border::*;
 pub use box_shadow::*;
 pub use clip_path::*;
 pub use color::*;
+pub use conic_gradient::*;
 use fast_image_resize::ResizeAlg;
 pub use filter::*;
 pub use flex::*;
 pub use flex_grow::*;
 pub use font_feature_settings::*;
+pub use font_stretch::*;
 pub use font_style::*;
 pub use font_variation_settings::*;
 pub use font_weight::*;
@@ -70,6 +75,7 @@ pub use line_clamp::*;
 pub use line_height::*;
 pub use linear_gradient::*;
 pub use noise_v1::*;
+pub use outline::*;
 pub use overflow::*;
 pub use overflow_wrap::*;
 pub use percentage_number::*;
@@ -626,6 +632,9 @@ pub enum Display {
   Inline,
   /// The element creates a block container and its children follow the block layout algorithm
   Block,
+  /// The element is inline-level (positioned by parent's inline flow) but creates a block
+  /// formatting context internally. Children follow block/inline layout rules.
+  InlineBlock,
 }
 
 declare_enum_from_css_impl!(
@@ -634,12 +643,20 @@ declare_enum_from_css_impl!(
   "flex" => Display::Flex,
   "grid" => Display::Grid,
   "inline" => Display::Inline,
-  "block" => Display::Block
+  "block" => Display::Block,
+  "inline-block" => Display::InlineBlock
 );
 
 impl Display {
-  /// Returns true if the display is inline.
+  /// Returns true if the element participates in inline flow (for the parent's layout).
+  /// Both `Inline` and `InlineBlock` are inline-level elements.
   pub fn is_inline(&self) -> bool {
+    matches!(self, Display::Inline | Display::InlineBlock)
+  }
+
+  /// Returns true if the element's children flow through into the parent's inline context.
+  /// Only pure `Inline` elements do this — `InlineBlock` creates its own formatting context.
+  pub fn is_inline_flow_through(&self) -> bool {
     *self == Display::Inline
   }
 
@@ -651,7 +668,7 @@ impl Display {
   /// Cast the display to block level.
   pub fn as_blockified(self) -> Self {
     match self {
-      Display::Inline => Display::Block,
+      Display::Inline | Display::InlineBlock => Display::Block,
       _ => self,
     }
   }
@@ -667,7 +684,7 @@ impl From<Display> for taffy::Display {
     match value {
       Display::Flex => taffy::Display::Flex,
       Display::Grid => taffy::Display::Grid,
-      Display::Block => taffy::Display::Block,
+      Display::Block | Display::InlineBlock => taffy::Display::Block,
       Display::None => taffy::Display::None,
       Display::Inline => unreachable!("Inline node should not be inserted into taffy context"),
     }
