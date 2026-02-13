@@ -195,6 +195,7 @@ define_style!(
   isolation: Isolation,
   mix_blend_mode: BlendMode,
   visibility: Visibility,
+  direction: Direction where inherit = true,
 );
 
 /// Sized font style with resolved font size and line height.
@@ -650,6 +651,7 @@ impl InheritedStyle {
       Self::convert_template_components(&self.grid_template_rows, context);
 
     taffy::style::Style {
+      direction: self.direction.into(),
       box_sizing: self.box_sizing.into(),
       size: Size {
         width: self.width.resolve_to_dimension(&context.sizing),

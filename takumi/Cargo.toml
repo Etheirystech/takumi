@@ -59,6 +59,7 @@ optional = true
 
 [dependencies.taffy]
 version = "0.9"
+git = "https://github.com/kane50613/taffy.git"
 default-features = false
 features = [
   "flexbox",
