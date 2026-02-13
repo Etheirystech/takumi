@@ -10,7 +10,7 @@ use crate::{
       create_inline_layout, measure_inline_layout,
     },
     node::Node,
-    style::{Affine, Display, InheritedStyle},
+    style::{Affine, Display, InheritedStyle, Position},
   },
   rendering::{
     Canvas, MaxHeight, RenderContext, Sizing,
@@ -22,6 +22,9 @@ pub(crate) struct NodeTree<'g, N: Node<N>> {
   pub(crate) context: RenderContext<'g>,
   pub(crate) node: Option<N>,
   pub(crate) children: Option<Box<[NodeTree<'g, N>]>>,
+  /// Absolutely-positioned children separated from in-flow children.
+  /// These are out-of-flow and rendered after inline layout (if any).
+  pub(crate) abs_pos_children: Option<Box<[NodeTree<'g, N>]>>,
 }
 
 impl<'g, N: Node<N>> NodeTree<'g, N> {
@@ -156,13 +159,35 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
       )
     });
 
-    let Some(mut children) = children else {
+    let Some(children) = children else {
       return Self {
         context,
         node: Some(node),
         children: None,
+        abs_pos_children: None,
       };
     };
+
+    // Separate absolutely-positioned children (out-of-flow) from in-flow children.
+    // Abs-pos elements don't participate in inline/block formatting context determination
+    // and are rendered separately after inline layout.
+    let (in_flow_vec, mut abs_pos_vec): (Vec<Self>, Vec<Self>) = children
+      .into_vec()
+      .into_iter()
+      .partition(|c| c.context.style.position != Position::Absolute);
+
+    let abs_pos_children = if abs_pos_vec.is_empty() {
+      None
+    } else {
+      // CSS spec: absolutely-positioned elements are always blockified.
+      // https://www.w3.org/TR/CSS2/visuren.html#dis-pos-flo
+      for child in &mut abs_pos_vec {
+        child.context.style.display.blockify();
+      }
+      Some(abs_pos_vec.into_boxed_slice())
+    };
+
+    let mut children: Box<[Self]> = in_flow_vec.into_boxed_slice();
 
     if context.style.display.should_blockify_children() {
       for child in &mut children {
@@ -173,6 +198,7 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
         context,
         node: Some(node),
         children: Some(children),
+        abs_pos_children,
       };
     }
 
@@ -186,6 +212,7 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
         context,
         node: Some(node),
         children: Some(children),
+        abs_pos_children,
       };
     }
 
@@ -227,6 +254,7 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
       context,
       node: Some(node),
       children: Some(final_children.into_boxed_slice()),
+      abs_pos_children,
     }
   }
 
@@ -247,17 +275,29 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
     }
 
     let children = self.children.take();
+    let abs_children = self.abs_pos_children.take();
 
     let node_id =
       tree.new_leaf_with_context(self.context.style.to_taffy_style(&self.context), self)?;
 
-    if let Some(children) = children {
-      let children_ids = children
-        .into_iter()
-        .map(|child| child.insert_into_taffy(tree))
-        .collect::<Result<Vec<_>>>()?;
+    // For non-inline nodes, insert both in-flow and abs-pos children into taffy.
+    // Taffy handles abs-pos children natively (positions them after content layout).
+    let mut child_ids = Vec::new();
 
-      tree.set_children(node_id, &children_ids)?;
+    if let Some(children) = children {
+      for child in children {
+        child_ids.push(child.insert_into_taffy(tree)?);
+      }
+    }
+
+    if let Some(abs_children) = abs_children {
+      for child in abs_children {
+        child_ids.push(child.insert_into_taffy(tree)?);
+      }
+    }
+
+    if !child_ids.is_empty() {
+      tree.set_children(node_id, &child_ids)?;
     }
 
     Ok(node_id)
@@ -333,6 +373,7 @@ fn flush_inline_group<'g, N: Node<N>>(
       },
       children: Some(take(inline_group).into_boxed_slice()),
       node: None,
+      abs_pos_children: None,
     });
   }
 }

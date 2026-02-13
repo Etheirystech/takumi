@@ -231,21 +231,49 @@ pub(crate) fn create_inline_layout<'c, 'g: 'c, N: Node<N> + 'c>(
             Length::Auto => None,
             h => Some(h.to_px(&context.sizing, 0.0)),
           };
+          let is_abs_pos = context.style.position == crate::layout::style::Position::Absolute;
+
+          let actual_height = explicit_height.unwrap_or(content_size.height + pad_border_v)
+            + margin.grid_axis_sum(taffy::AbsoluteAxis::Vertical);
+
+          // When the inline-block has line-height: 0, report height as 0 to parley
+          // so it doesn't inflate the parent's line height. This lets the parent's
+          // CSS line-height be the sole controller of row spacing (e.g. ability
+          // badge inline-blocks inside card text). Rendering always uses the actual
+          // height from InlineBoxItem, not parley's InlineBox.
+          let resolved_line_height = context.style.line_height.into_parley(&context.sizing);
+          let parley_height = if is_abs_pos {
+            0.0
+          } else {
+            match resolved_line_height {
+              // Use a small non-zero height to keep the box in parley's line flow
+              // while remaining metric-neutral for row metrics.
+              parley::LineHeight::Absolute(h) if h < 0.5 => 0.49,
+              _ => actual_height,
+            }
+          };
 
           let inline_box = InlineBox {
             index: index_pos,
             id: idx,
-            width: explicit_width.unwrap_or(content_size.width + pad_border_h)
-              + margin.grid_axis_sum(taffy::AbsoluteAxis::Horizontal),
-            height: explicit_height.unwrap_or(content_size.height + pad_border_v)
-              + margin.grid_axis_sum(taffy::AbsoluteAxis::Vertical),
+            width: if is_abs_pos {
+              0.0
+            } else {
+              explicit_width.unwrap_or(content_size.width + pad_border_h)
+                + margin.grid_axis_sum(taffy::AbsoluteAxis::Horizontal)
+            },
+            height: parley_height,
           };
 
           if let Some(node) = &node_tree.node {
             spans.push(ProcessedInlineSpan::Box(InlineBoxItem {
               node,
               context,
-              inline_box: inline_box.clone(),
+              // Always store actual height for rendering (may differ from parley_height)
+              inline_box: InlineBox {
+                height: actual_height,
+                ..inline_box.clone()
+              },
               margin,
               padding,
               border,

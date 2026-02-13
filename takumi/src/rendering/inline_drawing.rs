@@ -175,6 +175,17 @@ fn draw_glyph_run<I: GenericImageView<Pixel = Rgba<u8>>>(
   Ok(())
 }
 
+#[inline]
+fn metric_neutral_y_offset(actual_height: f32, parley_height: f32) -> f32 {
+  // Metric-neutral boxes are positioned against text-top in fix_inline_box_y,
+  // so they don't need the baseline compensation used for regular inline boxes.
+  if parley_height < 0.5 {
+    return 0.0;
+  }
+
+  (actual_height - parley_height).max(0.0)
+}
+
 pub(crate) fn draw_inline_box<N: Node<N>>(
   inline_box: &PositionedInlineBox,
   item: &InlineBoxItem<'_, '_, N>,
@@ -191,7 +202,10 @@ pub(crate) fn draw_inline_box<N: Node<N>>(
     transform: transform
       * Affine::translation(
         inline_box.x + item.margin.left,
-        inline_box.y + item.margin.top,
+        // For metric-neutral inline-boxes (parley height = 0, actual render height > 0),
+        // draw using the actual box height so visual layers don't affect parent line metrics.
+        inline_box.y + item.margin.top
+          - metric_neutral_y_offset(item.inline_box.height, inline_box.height),
       ),
     ..item.context.clone()
   };
@@ -253,8 +267,14 @@ pub(crate) fn draw_inline_box<N: Node<N>>(
 
   item.node.draw_content(&context, canvas, layout)?;
 
-  // For inline-block nodes, draw the internal inline layout of their children
+  // For inline-block nodes, draw the internal inline layout of their children.
+  // Abs-pos children are rendered FIRST so they appear behind in-flow text
+  // (they serve as background layers, e.g., trigger badge trapezoid).
   if let Some(node_tree) = item.node_tree {
+    if let Some(abs_children) = &node_tree.abs_pos_children {
+      render_abs_pos_children(abs_children, &context, canvas, layout)?;
+    }
+
     if node_tree.should_create_inline_layout() {
       draw_inline_block_content(node_tree, &context, canvas, layout)?;
     }
@@ -336,6 +356,154 @@ fn draw_inline_block_content<'g, N: Node<N>>(
   Ok(())
 }
 
+/// Renders absolutely-positioned children that were separated from in-flow children.
+/// Uses a temporary taffy tree to compute each child's layout (size + position),
+/// then renders using the NodeTree's drawing methods.
+pub(crate) fn render_abs_pos_children<'g, N: Node<N>>(
+  children: &[crate::layout::tree::NodeTree<'g, N>],
+  parent_context: &RenderContext<'g>,
+  canvas: &mut Canvas,
+  parent_layout: Layout,
+) -> Result<()> {
+  use taffy::{TaffyTree, style::Dimension};
+
+  // CSS spec: the containing block for abs-pos children of a positioned
+  // ancestor is the padding box (border-box minus borders).
+  let padding_width =
+    parent_layout.size.width - parent_layout.border.left - parent_layout.border.right;
+  let padding_height =
+    parent_layout.size.height - parent_layout.border.top - parent_layout.border.bottom;
+
+  // Offset from parent's border-box origin to padding-box origin
+  let padding_offset_x = parent_layout.border.left;
+  let padding_offset_y = parent_layout.border.top;
+
+  for child in children {
+    // Use a temporary taffy tree to compute the abs-pos child's layout.
+    // This handles inset resolution (top/left/right/bottom) and sizing correctly.
+    let child_taffy_style = child.context.style.to_taffy_style(&child.context);
+
+    let mut temp_taffy: TaffyTree<()> = TaffyTree::new();
+    let child_id = temp_taffy.new_leaf(child_taffy_style)?;
+
+    // Container represents the containing block (parent's padding box)
+    let container_style = taffy::Style {
+      size: Size {
+        width: Dimension::length(padding_width),
+        height: Dimension::length(padding_height),
+      },
+      ..Default::default()
+    };
+    let container_id = temp_taffy.new_with_children(container_style, &[child_id])?;
+
+    temp_taffy.compute_layout(
+      container_id,
+      Size {
+        width: AvailableSpace::Definite(padding_width),
+        height: AvailableSpace::Definite(padding_height),
+      },
+    )?;
+
+    let child_layout = *temp_taffy.layout(child_id)?;
+
+    // Compute the child's world-space transform
+    let mut child_transform = parent_context.transform
+      * Affine::translation(
+        padding_offset_x + child_layout.location.x,
+        padding_offset_y + child_layout.location.y,
+      );
+
+    // Apply the child's own CSS transform (scale, rotate, translate)
+    apply_transform(
+      &mut child_transform,
+      &child.context.style,
+      child_layout.size,
+      &child.context.sizing,
+    );
+
+    if !child_transform.is_invertible() {
+      continue;
+    }
+
+    // Create render context with the computed transform
+    let child_ctx = RenderContext {
+      transform: child_transform,
+      ..child.context.clone()
+    };
+
+    // Apply clip-path / mask-image / overflow constraints
+    let constrain = CanvasConstrain::from_node(
+      &child_ctx,
+      &child_ctx.style,
+      child_layout,
+      child_transform,
+      &mut canvas.mask_memory,
+    )?;
+
+    if matches!(constrain, CanvasConstrainResult::SkipRendering) {
+      continue;
+    }
+
+    let has_constrain = constrain.is_some();
+
+    // Draw the child's visual shell (background, border, shadows, etc.)
+    match constrain {
+      CanvasConstrainResult::None => {
+        if let Some(ref node) = child.node {
+          node.draw_outset_box_shadow(&child_ctx, canvas, child_layout)?;
+          node.draw_background(&child_ctx, canvas, child_layout)?;
+          node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
+          node.draw_border(&child_ctx, canvas, child_layout)?;
+          node.draw_outline(&child_ctx, canvas, child_layout)?;
+        }
+      }
+      CanvasConstrainResult::Some(constrain) => match constrain {
+        CanvasConstrain::ClipPath { .. } | CanvasConstrain::MaskImage { .. } => {
+          canvas.push_constrain(constrain);
+          if let Some(ref node) = child.node {
+            node.draw_outset_box_shadow(&child_ctx, canvas, child_layout)?;
+            node.draw_background(&child_ctx, canvas, child_layout)?;
+            node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
+            node.draw_border(&child_ctx, canvas, child_layout)?;
+            node.draw_outline(&child_ctx, canvas, child_layout)?;
+          }
+        }
+        CanvasConstrain::Overflow { .. } => {
+          if let Some(ref node) = child.node {
+            node.draw_outset_box_shadow(&child_ctx, canvas, child_layout)?;
+            node.draw_background(&child_ctx, canvas, child_layout)?;
+            node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
+            node.draw_border(&child_ctx, canvas, child_layout)?;
+            node.draw_outline(&child_ctx, canvas, child_layout)?;
+          }
+          canvas.push_constrain(constrain);
+        }
+      },
+      CanvasConstrainResult::SkipRendering => unreachable!(),
+    }
+
+    // Draw content (images, etc.)
+    if let Some(ref node) = child.node {
+      node.draw_content(&child_ctx, canvas, child_layout)?;
+    }
+
+    // Render nested abs-pos children first (behind text), then inline content
+    if let Some(nested_abs) = &child.abs_pos_children {
+      render_abs_pos_children(nested_abs, &child_ctx, canvas, child_layout)?;
+    }
+
+    if child.should_create_inline_layout() {
+      draw_inline_block_content(child, &child_ctx, canvas, child_layout)?;
+    }
+
+    if has_constrain {
+      canvas.pop_constrain();
+    }
+  }
+
+  Ok(())
+}
+
 pub(crate) fn draw_inline_layout(
   context: &RenderContext,
   canvas: &mut Canvas,
@@ -392,6 +560,33 @@ pub(crate) fn draw_inline_layout(
   };
 
   let mut positioned_inline_boxes = Vec::new();
+  let lines = inline_layout.lines().collect::<Vec<_>>();
+  let mut next_nonzero_line_top = vec![0.0_f32; lines.len()];
+  let mut line_text_top = vec![0.0_f32; lines.len()];
+  let mut line_has_glyph = vec![false; lines.len()];
+  let mut next_top: Option<f32> = None;
+
+  for (idx, line) in lines.iter().enumerate() {
+    let mut top_from_glyph: Option<f32> = None;
+    for item in line.items() {
+      if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+        top_from_glyph = Some(glyph_run.baseline() - glyph_run.run().metrics().ascent);
+        break;
+      }
+    }
+
+    line_has_glyph[idx] = top_from_glyph.is_some();
+    line_text_top[idx] = top_from_glyph.unwrap_or(line.metrics().baseline - line.metrics().ascent);
+  }
+
+  for (idx, line) in lines.iter().enumerate().rev() {
+    let metrics = line.metrics();
+    let top = line_text_top[idx];
+    if metrics.line_height >= 0.5 {
+      next_top = Some(top);
+    }
+    next_nonzero_line_top[idx] = next_top.unwrap_or(top);
+  }
 
   // Determine which phases to run. When the canvas has a text_draw_phase set
   // (from an ancestor with background-clip: text doing two-pass child rendering),
@@ -408,7 +603,7 @@ pub(crate) fn draw_inline_layout(
   // all fills. This matches CSS painting order where text-stroke renders behind
   // text fill, preventing a later run's stroke from covering an earlier run's fill.
   for &phase in phases {
-    for line in inline_layout.lines() {
+    for (line_idx, line) in lines.iter().enumerate() {
       for item in line.items() {
         match item {
           PositionedLayoutItem::GlyphRun(glyph_run) => {
@@ -426,7 +621,18 @@ pub(crate) fn draw_inline_layout(
           PositionedLayoutItem::InlineBox(mut inline_box) => {
             // Collect inline boxes only once (during first phase)
             if phase == phases[0] {
-              fix_inline_box_y(&mut inline_box.y, line.metrics());
+              let metrics = line.metrics();
+              if inline_box.height < 0.5 {
+                // Metric-neutral wrapper lines can be generated without glyphs;
+                // anchor them to the next real text line so they keep visual order.
+                inline_box.y = if line_has_glyph[line_idx] {
+                  line_text_top[line_idx]
+                } else {
+                  next_nonzero_line_top[line_idx]
+                };
+              } else {
+                fix_inline_box_y(&mut inline_box.y, metrics, inline_box.height);
+              }
               positioned_inline_boxes.push(inline_box)
             }
           }
@@ -439,8 +645,57 @@ pub(crate) fn draw_inline_layout(
 }
 
 // https://github.com/linebender/parley/blob/d7ed9b1ec844fa5a9ed71b84552c603dae3cab18/parley/src/layout/line.rs#L261C28-L261C61
-pub(crate) fn fix_inline_box_y(y: &mut f32, metrics: &LineMetrics) {
+pub(crate) fn fix_inline_box_y(y: &mut f32, metrics: &LineMetrics, inline_box_height: f32) {
+  // Metric-neutral inline boxes (line-height: 0 wrappers) are used for decorations
+  // that should not affect line metrics. Align them to text-top instead of baseline.
+  if inline_box_height < 0.5 {
+    *y = metrics.baseline - metrics.ascent;
+    return;
+  }
+
   *y += metrics.line_height - metrics.baseline;
+}
+
+#[cfg(test)]
+mod tests {
+  use parley::LineMetrics;
+
+  use super::{fix_inline_box_y, metric_neutral_y_offset};
+
+  #[test]
+  fn fix_inline_box_y_skips_metric_neutral_boxes() {
+    let metrics = LineMetrics {
+      ascent: 36.0,
+      line_height: 88.0,
+      baseline: 74.0,
+      ..LineMetrics::default()
+    };
+    let mut y = 74.0;
+
+    fix_inline_box_y(&mut y, &metrics, 0.0);
+
+    assert_eq!(y, 38.0);
+  }
+
+  #[test]
+  fn fix_inline_box_y_applies_to_regular_boxes() {
+    let metrics = LineMetrics {
+      line_height: 88.0,
+      baseline: 74.0,
+      ..LineMetrics::default()
+    };
+    let mut y = 54.0;
+
+    fix_inline_box_y(&mut y, &metrics, 20.0);
+
+    assert_eq!(y, 68.0);
+  }
+
+  #[test]
+  fn metric_neutral_offset_uses_actual_minus_parley_height() {
+    assert_eq!(metric_neutral_y_offset(50.0, 0.0), 0.0);
+    assert_eq!(metric_neutral_y_offset(20.0, 20.0), 0.0);
+  }
 }
 
 /// Creates a cropped `RgbaImage` from an ancestor's text clip background.
