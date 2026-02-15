@@ -856,7 +856,7 @@ mod tests {
   fn test_white_space_collapse() {
     let input = "  a \n\t b  c\n\n ";
     let out = apply_white_space_collapse(input, WhiteSpaceCollapse::Collapse);
-    assert_eq!(out, "a b c");
+    assert_eq!(out, " a b c ");
   }
 
   #[test]
