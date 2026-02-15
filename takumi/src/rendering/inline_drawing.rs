@@ -532,7 +532,7 @@ pub(crate) fn draw_inline_layout(
 
     let tile = rasterize_layers(
       layers,
-      extended_size.map(|x| x as u32),
+      extended_size.map(|x| x.ceil() as u32),
       context,
       BorderProperties::default(),
       Affine::IDENTITY,

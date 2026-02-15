@@ -194,12 +194,27 @@ impl CanvasConstrain {
     }
 
     // When border-radius is non-zero, create a mask-based overflow constraint
-    // so that children (including abs-pos) are clipped to rounded corners.
+    // so that children (including abs-pos) are clipped to the padding-box
+    // rounded corners (inset from the border edge by border widths).
     let border_props = BorderProperties::from_context(context, layout.size, layout.border);
     if !border_props.is_zero() {
-      let border_box = layout.size;
+      // Compute padding-box: border-box inset by border widths on each side.
+      let padding_box = Size {
+        width: (layout.size.width - layout.border.left - layout.border.right).max(0.0),
+        height: (layout.size.height - layout.border.top - layout.border.bottom).max(0.0),
+      };
+
+      // Shrink corner radii inward by border widths to get padding-box radii.
+      let mut inner_props = border_props;
+      inner_props.inset_by_border_width();
+
       let mut paths = Vec::with_capacity(10);
-      border_props.append_mask_commands(&mut paths, border_box, Point::ZERO);
+      // Offset origin so the mask starts at the padding edge (inside the border).
+      let padding_origin = Point {
+        x: layout.border.left,
+        y: layout.border.top,
+      };
+      inner_props.append_mask_commands(&mut paths, padding_box, padding_origin);
 
       let (mask_data, placement) = mask_memory.render(&paths, None, None);
 

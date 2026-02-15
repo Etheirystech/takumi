@@ -117,20 +117,32 @@ impl<'i> FromCss<'i> for ConicGradient {
     input.expect_function_matching("conic-gradient")?;
 
     input.parse_nested_block(|input| {
-      let mut from_angle = Angle::zero();
-      let mut center = BackgroundPosition::default();
+      let mut from_angle: Option<Angle> = None;
+      let mut center: Option<BackgroundPosition> = None;
 
       // Parse optional "from <angle>" and/or "at <position>" before the comma
       loop {
         // Try "from <angle>"
         if input.try_parse(|i| i.expect_ident_matching("from")).is_ok() {
-          from_angle = Angle::from_css(input)?;
+          if from_angle.is_some() {
+            let location = input.current_source_location();
+            return Err(
+              location.new_custom_error(std::borrow::Cow::Borrowed("duplicate 'from' clause")),
+            );
+          }
+          from_angle = Some(Angle::from_css(input)?);
           continue;
         }
 
         // Try "at <position>"
         if input.try_parse(|i| i.expect_ident_matching("at")).is_ok() {
-          center = BackgroundPosition::from_css(input)?;
+          if center.is_some() {
+            let location = input.current_source_location();
+            return Err(
+              location.new_custom_error(std::borrow::Cow::Borrowed("duplicate 'at' clause")),
+            );
+          }
+          center = Some(BackgroundPosition::from_css(input)?);
           continue;
         }
 
@@ -143,8 +155,8 @@ impl<'i> FromCss<'i> for ConicGradient {
       let stops = parse_gradient_stops(input)?;
 
       Ok(ConicGradient {
-        from_angle,
-        center,
+        from_angle: from_angle.unwrap_or(Angle::zero()),
+        center: center.unwrap_or_default(),
         stops: stops.into_boxed_slice(),
       })
     })

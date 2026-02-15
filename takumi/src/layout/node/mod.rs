@@ -506,13 +506,13 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
     outer_radius.expand_by(Sides([offset + width_px; 4]).into());
 
     let inner_size = Size {
-      width: layout.size.width + 2.0 * offset,
-      height: layout.size.height + 2.0 * offset,
+      width: (layout.size.width + 2.0 * offset).max(0.0),
+      height: (layout.size.height + 2.0 * offset).max(0.0),
     };
 
     let outer_size = Size {
-      width: layout.size.width + 2.0 * (offset + width_px),
-      height: layout.size.height + 2.0 * (offset + width_px),
+      width: (layout.size.width + 2.0 * (offset + width_px)).max(0.0),
+      height: (layout.size.height + 2.0 * (offset + width_px)).max(0.0),
     };
 
     let inner_offset = Point {

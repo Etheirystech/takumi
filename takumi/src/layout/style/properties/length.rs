@@ -11,9 +11,9 @@ use crate::{
   rendering::Sizing,
 };
 
-/// Represents a parsed `calc()` expression as a sum of percentage, em, rem, and px components.
+/// Represents a parsed `calc()` expression as a sum of percentage, em, rem, vh, vw, and px components.
 ///
-/// Covers patterns like `calc(100% - 0.6em)`, `calc(50% + 10px)`, etc.
+/// Covers patterns like `calc(100% - 0.6em)`, `calc(100vh - 60px)`, etc.
 /// Other absolute units (cm, mm, in, pt, pc) are converted to px at parse time.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct CalcExpr {
@@ -23,6 +23,10 @@ pub struct CalcExpr {
   pub em: f32,
   /// Rem component (relative to root font-size)
   pub rem: f32,
+  /// Vh component (relative to viewport height, 0-100 scale)
+  pub vh: f32,
+  /// Vw component (relative to viewport width, 0-100 scale)
+  pub vw: f32,
   /// Absolute pixel component
   pub px: f32,
 }
@@ -43,10 +47,14 @@ impl CalcExpr {
       Length::Em(v) => self.em += v * sign,
       Length::Rem(v) => self.rem += v * sign,
       Length::Px(v) => self.px += v * sign,
+      Length::Vh(v) => self.vh += v * sign,
+      Length::Vw(v) => self.vw += v * sign,
       Length::Calc(inner) => {
         self.percentage += inner.percentage * sign;
         self.em += inner.em * sign;
         self.rem += inner.rem * sign;
+        self.vh += inner.vh * sign;
+        self.vw += inner.vw * sign;
         self.px += inner.px * sign;
       }
       // Convert other absolute units to px at parse time
@@ -56,8 +64,8 @@ impl CalcExpr {
       Length::Q(v) => self.px += v * Self::ONE_Q_IN_PX * sign,
       Length::Pt(v) => self.px += v * Self::ONE_PT_IN_PX * sign,
       Length::Pc(v) => self.px += v * Self::ONE_PC_IN_PX * sign,
-      // Auto, Vh, Vw can't be resolved without context — treat as 0
-      _ => {}
+      // Auto can't be resolved in calc — treat as 0
+      Length::Auto => {}
     }
   }
 
@@ -66,9 +74,12 @@ impl CalcExpr {
     let has_pct = self.percentage != 0.0;
     let has_em = self.em != 0.0;
     let has_rem = self.rem != 0.0;
+    let has_vh = self.vh != 0.0;
+    let has_vw = self.vw != 0.0;
     let has_px = self.px != 0.0;
 
-    let count = has_pct as u8 + has_em as u8 + has_rem as u8 + has_px as u8;
+    let count =
+      has_pct as u8 + has_em as u8 + has_rem as u8 + has_vh as u8 + has_vw as u8 + has_px as u8;
 
     if count == 0 {
       return Length::Px(0.0);
@@ -82,6 +93,12 @@ impl CalcExpr {
       }
       if has_rem {
         return Length::Rem(self.rem);
+      }
+      if has_vh {
+        return Length::Vh(self.vh);
+      }
+      if has_vw {
+        return Length::Vw(self.vw);
       }
       return Length::Px(self.px);
     }
@@ -203,6 +220,8 @@ impl<const DEFAULT_AUTO: bool> Length<DEFAULT_AUTO> {
         percentage: -expr.percentage,
         em: -expr.em,
         rem: -expr.rem,
+        vh: -expr.vh,
+        vw: -expr.vw,
         px: -expr.px,
       }),
     }
@@ -398,8 +417,10 @@ impl<const DEFAULT_AUTO: bool> Length<DEFAULT_AUTO> {
         let pct_px = (expr.percentage / 100.0) * percentage_full_px;
         let em_px = expr.em * sizing.font_size;
         let rem_px = expr.rem * sizing.viewport.font_size * sizing.viewport.device_pixel_ratio;
+        let vh_px = expr.vh * sizing.viewport.height.unwrap_or_default() as f32 / 100.0;
+        let vw_px = expr.vw * sizing.viewport.width.unwrap_or_default() as f32 / 100.0;
         let px_px = expr.px * sizing.viewport.device_pixel_ratio;
-        return pct_px + em_px + rem_px + px_px;
+        return pct_px + em_px + rem_px + vh_px + vw_px + px_px;
       }
     };
 
@@ -438,6 +459,8 @@ mod tests {
         percentage: 100.0,
         em: -0.6,
         rem: 0.0,
+        vh: 0.0,
+        vw: 0.0,
         px: 0.0,
       }))
     );
@@ -473,6 +496,8 @@ mod tests {
         percentage: 100.0,
         em: 0.0,
         rem: 0.0,
+        vh: 0.0,
+        vw: 0.0,
         px: -10.0,
       }))
     );
@@ -487,6 +512,8 @@ mod tests {
         percentage: 50.0,
         em: 1.0,
         rem: 0.0,
+        vh: 0.0,
+        vw: 0.0,
         px: 5.0,
       }))
     );
@@ -503,9 +530,34 @@ mod tests {
         percentage: -100.0,
         em: 0.6,
         rem: 0.0,
+        vh: 0.0,
+        vw: 0.0,
         px: 0.0,
       })
     );
+  }
+
+  #[test]
+  fn test_parse_calc_vh_minus_px() {
+    let result = Length::<true>::from_str("calc(100vh - 60px)");
+    assert_eq!(
+      result,
+      Ok(Length::Calc(CalcExpr {
+        percentage: 0.0,
+        em: 0.0,
+        rem: 0.0,
+        vh: 100.0,
+        vw: 0.0,
+        px: -60.0,
+      }))
+    );
+  }
+
+  #[test]
+  fn test_parse_calc_vw_simplify() {
+    // calc(50vw + 50vw) should simplify to Vw(100.0)
+    let result = Length::<true>::from_str("calc(50vw + 50vw)");
+    assert_eq!(result, Ok(Length::Vw(100.0)));
   }
 
   #[test]

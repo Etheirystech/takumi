@@ -360,6 +360,10 @@ fn render_node<'g, Nodes: Node<Nodes>>(
 
   node.context.transform = transform;
 
+  // During text draw phases (stroke/fill), skip non-text rendering to prevent
+  // double compositing of backgrounds, borders, filters, etc.
+  let is_text_phase = canvas.text_draw_phase.is_some();
+
   // Normal rendering path (no filters requiring node-level rendering)
   let constrain = CanvasConstrain::from_node(
     &node.context,
@@ -377,7 +381,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
   let has_constrain = constrain.is_some();
 
   // Apply backdrop-filter effects to the area behind this element
-  if !node.context.style.backdrop_filter.is_empty() {
+  if !is_text_phase && !node.context.style.backdrop_filter.is_empty() {
     let border = BorderProperties::from_context(&node.context, layout.size, layout.border);
 
     apply_backdrop_filter(canvas, border, layout.size, transform, &node.context);
@@ -385,11 +389,12 @@ fn render_node<'g, Nodes: Node<Nodes>>(
 
   // If isolated canvas is required, replace the current canvas with a new one.
   // Make sure to merge the image back!
-  let should_isolate = node.context.style.is_isolated()
-    || node
-      .context
-      .style
-      .has_non_identity_transform(layout.size, &node.context.sizing);
+  let should_isolate = !is_text_phase
+    && (node.context.style.is_isolated()
+      || node
+        .context
+        .style
+        .has_non_identity_transform(layout.size, &node.context.sizing));
 
   let original_canvas_image = if should_isolate {
     Some(canvas.replace_new_image())
@@ -397,26 +402,40 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     None
   };
 
-  match constrain {
-    CanvasConstrainResult::None => {
-      node.draw_shell(canvas, layout)?;
+  if !is_text_phase {
+    match constrain {
+      CanvasConstrainResult::None => {
+        node.draw_shell(canvas, layout)?;
+      }
+      CanvasConstrainResult::Some(constrain) => match constrain {
+        CanvasConstrain::ClipPath { .. } | CanvasConstrain::MaskImage { .. } => {
+          canvas.push_constrain(constrain);
+          node.draw_shell(canvas, layout)?;
+        }
+        CanvasConstrain::Overflow { .. } => {
+          node.draw_shell(canvas, layout)?;
+          canvas.push_constrain(constrain);
+        }
+      },
+      CanvasConstrainResult::SkipRendering => unreachable!(),
     }
-    CanvasConstrainResult::Some(constrain) => match constrain {
-      CanvasConstrain::ClipPath { .. } | CanvasConstrain::MaskImage { .. } => {
-        canvas.push_constrain(constrain);
-        node.draw_shell(canvas, layout)?;
-      }
-      CanvasConstrain::Overflow { .. } => {
-        node.draw_shell(canvas, layout)?;
+  } else if has_constrain {
+    // During text phases, still push constrains (clip-path, overflow) so child
+    // text is clipped properly, but skip drawing the shell (background/border).
+    match constrain {
+      CanvasConstrainResult::Some(constrain) => {
         canvas.push_constrain(constrain);
       }
-    },
-    CanvasConstrainResult::SkipRendering => unreachable!(),
+      _ => {}
+    }
   }
 
+  // draw_content is NOT gated by is_text_phase because TextNode's draw_content
+  // calls draw_inline_layout which is already phase-aware. ImageNode's draw_content
+  // has its own is_text_phase check to skip during text phases.
   node.draw_content(canvas, layout)?;
 
-  if node.context.draw_debug_border {
+  if !is_text_phase && node.context.draw_debug_border {
     draw_debug_border(canvas, layout, transform);
   }
 
@@ -493,7 +512,9 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     canvas.pop_text_clip_background();
   }
 
-  apply_filters(&mut canvas.image, &sizing, current_color, filters.iter());
+  if !is_text_phase {
+    apply_filters(&mut canvas.image, &sizing, current_color, filters.iter());
+  }
 
   // If there was an isolated canvas, composite the filtered image back into the original canvas
   if let Some(mut original_canvas_image) = original_canvas_image {
