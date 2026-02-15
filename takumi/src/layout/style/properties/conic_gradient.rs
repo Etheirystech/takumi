@@ -276,7 +276,7 @@ mod tests {
     let top = tile.get_pixel(50, 0);
     assert_eq!(top, Rgba([255, 0, 0, 255]));
 
-    // Bottom should be blue (roughly 180deg = 50% of turn)
+    // Bottom should be green (roughly 180deg = 50% of turn, within the 33%–66% green zone)
     let bottom = tile.get_pixel(50, 99);
     assert_eq!(bottom, Rgba([0, 255, 0, 255]));
   }

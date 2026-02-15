@@ -720,37 +720,13 @@ fn create_ancestor_clip_crop(
   // Compute the child's border-box origin in the ancestor's coordinate space.
   let child_origin = (ancestor_inv * context.transform).transform_point(Point::ZERO);
 
-  // Start the crop at (0, 0) of the ancestor image so that text stroke
-  // extending beyond the child's left/top edges is still covered by the
-  // clip image. The returned offset tells the caller where the child's
-  // origin is within the cropped image.
-  let crop_x = 0u32;
-  let crop_y = 0u32;
-
-  let anc_w = ancestor_clip.image.width();
-  let anc_h = ancestor_clip.image.height();
-
-  if anc_w == 0 || anc_h == 0 {
-    return None;
-  }
-
-  // The child's origin within the crop image.
+  // The child's origin within the full ancestor image.
   let offset = Point {
     x: child_origin.x.max(0.0),
     y: child_origin.y.max(0.0),
   };
 
-  let crop_w = anc_w.saturating_sub(crop_x);
-  let crop_h = anc_h.saturating_sub(crop_y);
-
-  let mut cropped = RgbaImage::new(crop_w, crop_h);
-  for y in 0..crop_h {
-    for x in 0..crop_w {
-      cropped.put_pixel(x, y, *ancestor_clip.image.get_pixel(crop_x + x, crop_y + y));
-    }
-  }
-
-  Some((cropped, offset))
+  Some((ancestor_clip.image.clone(), offset))
 }
 
 /// Computes the faux-bold stroke width for a given font and style.

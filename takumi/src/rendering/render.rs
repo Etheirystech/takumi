@@ -492,6 +492,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
       // Second pass: draw all children's text fills.
       // This prevents a later child's stroke from covering an earlier child's fill.
       let children = taffy.children(node_id)?;
+      let prev_phase = canvas.text_draw_phase;
       canvas.text_draw_phase = Some(DrawPhase::Stroke);
       for &child_id in &children {
         render_node(taffy, child_id, canvas, transform)?;
@@ -500,7 +501,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
       for &child_id in &children {
         render_node(taffy, child_id, canvas, transform)?;
       }
-      canvas.text_draw_phase = None;
+      canvas.text_draw_phase = prev_phase;
     } else {
       for child_id in taffy.children(node_id)? {
         render_node(taffy, child_id, canvas, transform)?;
