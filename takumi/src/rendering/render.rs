@@ -458,7 +458,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     let layers = collect_background_layers(&node.context, layout.size)?;
     if let Some(rasterized) = rasterize_layers(
       layers,
-      layout.size.map(|x| x as u32),
+      layout.size.map(|x| x.ceil() as u32),
       &node.context,
       BorderProperties::default(),
       Affine::IDENTITY,
