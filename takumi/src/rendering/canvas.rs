@@ -120,6 +120,10 @@ pub(crate) enum CanvasConstrain {
     from: Point<u32>,
     to: Point<u32>,
     inverse_transform: Affine,
+    /// Optional mask for border-radius-aware overflow clipping.
+    /// When present, the mask covers the element's border box and provides
+    /// rounded-corner alpha values. Tuple: (mask_data, mask_width).
+    border_radius_mask: Option<(Box<[u8]>, u32)>,
   },
   ClipPath {
     mask: Box<[u8]>,
@@ -189,6 +193,36 @@ impl CanvasConstrain {
       return Ok(CanvasConstrainResult::SkipRendering);
     }
 
+    // When border-radius is non-zero, create a mask-based overflow constraint
+    // so that children (including abs-pos) are clipped to rounded corners.
+    let border_props = BorderProperties::from_context(context, layout.size, layout.border);
+    if !border_props.is_zero() {
+      let border_box = layout.size;
+      let mut paths = Vec::with_capacity(10);
+      border_props.append_mask_commands(&mut paths, border_box, Point::ZERO);
+
+      let (mask_data, placement) = mask_memory.render(&paths, None, None);
+
+      if placement.width == 0 || placement.height == 0 {
+        return Ok(CanvasConstrainResult::SkipRendering);
+      }
+
+      let from = Point {
+        x: placement.left.max(0) as u32,
+        y: placement.top.max(0) as u32,
+      };
+
+      return Ok(CanvasConstrainResult::Some(CanvasConstrain::Overflow {
+        from,
+        to: Point {
+          x: from.x + placement.width,
+          y: from.y + placement.height,
+        },
+        inverse_transform,
+        border_radius_mask: Some((Box::from(mask_data), placement.width)),
+      }));
+    }
+
     let from = Point {
       x: if clip_x {
         (layout.padding.left + layout.border.left) as u32
@@ -218,6 +252,7 @@ impl CanvasConstrain {
       from,
       to,
       inverse_transform,
+      border_radius_mask: None,
     }))
   }
 
@@ -227,6 +262,7 @@ impl CanvasConstrain {
         from,
         to,
         inverse_transform,
+        ref border_radius_mask,
       } => {
         let original_point = inverse_transform.transform_point(Point {
           x: x as f32,
@@ -246,6 +282,13 @@ impl CanvasConstrain {
 
         if !is_contained {
           return 0;
+        }
+
+        // Apply border-radius mask if present
+        if let Some((mask, mask_w)) = border_radius_mask {
+          let mx = original_point.x - from.x;
+          let my = original_point.y - from.y;
+          return mask[mask_index_from_coord(mx, my, *mask_w)];
         }
 
         u8::MAX
