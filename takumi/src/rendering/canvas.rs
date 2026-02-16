@@ -120,6 +120,10 @@ pub(crate) enum CanvasConstrain {
     from: Point<u32>,
     to: Point<u32>,
     inverse_transform: Affine,
+    /// Optional mask for border-radius-aware overflow clipping.
+    /// When present, the mask covers the element's border box and provides
+    /// rounded-corner alpha values. Tuple: (mask_data, mask_width).
+    border_radius_mask: Option<(Box<[u8]>, u32)>,
   },
   ClipPath {
     mask: Box<[u8]>,
@@ -189,6 +193,51 @@ impl CanvasConstrain {
       return Ok(CanvasConstrainResult::SkipRendering);
     }
 
+    // When border-radius is non-zero, create a mask-based overflow constraint
+    // so that children (including abs-pos) are clipped to the padding-box
+    // rounded corners (inset from the border edge by border widths).
+    let border_props = BorderProperties::from_context(context, layout.size, layout.border);
+    if !border_props.is_zero() {
+      // Compute padding-box: border-box inset by border widths on each side.
+      let padding_box = Size {
+        width: (layout.size.width - layout.border.left - layout.border.right).max(0.0),
+        height: (layout.size.height - layout.border.top - layout.border.bottom).max(0.0),
+      };
+
+      // Shrink corner radii inward by border widths to get padding-box radii.
+      let mut inner_props = border_props;
+      inner_props.inset_by_border_width();
+
+      let mut paths = Vec::with_capacity(10);
+      // Offset origin so the mask starts at the padding edge (inside the border).
+      let padding_origin = Point {
+        x: layout.border.left,
+        y: layout.border.top,
+      };
+      inner_props.append_mask_commands(&mut paths, padding_box, padding_origin);
+
+      let (mask_data, placement) = mask_memory.render(&paths, None, None);
+
+      if placement.width == 0 || placement.height == 0 {
+        return Ok(CanvasConstrainResult::SkipRendering);
+      }
+
+      let from = Point {
+        x: placement.left.max(0) as u32,
+        y: placement.top.max(0) as u32,
+      };
+
+      return Ok(CanvasConstrainResult::Some(CanvasConstrain::Overflow {
+        from,
+        to: Point {
+          x: from.x + placement.width,
+          y: from.y + placement.height,
+        },
+        inverse_transform,
+        border_radius_mask: Some((Box::from(mask_data), placement.width)),
+      }));
+    }
+
     let from = Point {
       x: if clip_x {
         (layout.padding.left + layout.border.left) as u32
@@ -218,6 +267,7 @@ impl CanvasConstrain {
       from,
       to,
       inverse_transform,
+      border_radius_mask: None,
     }))
   }
 
@@ -227,6 +277,7 @@ impl CanvasConstrain {
         from,
         to,
         inverse_transform,
+        ref border_radius_mask,
       } => {
         let original_point = inverse_transform.transform_point(Point {
           x: x as f32,
@@ -246,6 +297,13 @@ impl CanvasConstrain {
 
         if !is_contained {
           return 0;
+        }
+
+        // Apply border-radius mask if present
+        if let Some((mask, mask_w)) = border_radius_mask {
+          let mx = original_point.x - from.x;
+          let my = original_point.y - from.y;
+          return mask[mask_index_from_coord(mx, my, *mask_w)];
         }
 
         u8::MAX
@@ -399,7 +457,7 @@ impl Canvas {
       transform,
       algorithm,
       mode,
-      self.constrains.last(),
+      &self.constrains,
       &mut self.mask_memory,
     );
   }
@@ -409,6 +467,10 @@ impl Canvas {
 ///
 /// If the color is fully transparent (alpha = 0), no operation is performed.
 /// Otherwise, the pixel is blended with the existing canvas pixel using alpha blending.
+///
+/// All active constraints in the stack are checked — each constraint's alpha
+/// is combined multiplicatively so that nested clip-path + mask-image etc.
+/// all contribute to the final pixel alpha.
 #[inline(always)]
 fn draw_pixel(
   canvas: &mut RgbaImage,
@@ -416,18 +478,23 @@ fn draw_pixel(
   y: u32,
   mut color: Rgba<u8>,
   mode: BlendMode,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
 ) {
   if color.0[3] == 0 {
     return;
   }
 
-  if let Some(constrain_alpha) = constrain.map(|c| c.get_alpha(x, y)) {
-    if constrain_alpha == 0 {
+  for constrain in constrains {
+    let alpha = constrain.get_alpha(x, y);
+    if alpha == 0 {
       return;
     }
-
-    apply_mask_alpha_to_pixel(&mut color, constrain_alpha);
+    if alpha < 255 {
+      apply_mask_alpha_to_pixel(&mut color, alpha);
+      if color.0[3] == 0 {
+        return;
+      }
+    }
   }
 
   // image-rs blend will skip the operation if the source color is fully transparent
@@ -460,7 +527,7 @@ pub(crate) fn draw_mask<C: Into<Rgba<u8>>>(
   placement: Placement,
   color: C,
   mode: BlendMode,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
 ) {
   if mask.is_empty() {
     return;
@@ -482,7 +549,7 @@ pub(crate) fn draw_mask<C: Into<Rgba<u8>>>(
 
   let color = color.into();
 
-  overlay_area(canvas, offset, top_size, mode, constrain, |x, y| {
+  overlay_area(canvas, offset, top_size, mode, constrains, |x, y| {
     let alpha = mask[mask_index_from_coord(x, y, placement.width)];
 
     let mut pixel = color;
@@ -526,7 +593,7 @@ pub(crate) fn overlay_image<I: GenericImageView<Pixel = Rgba<u8>>>(
   transform: Affine,
   algorithm: ImageScalingAlgorithm,
   mode: BlendMode,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
   mask_memory: &mut MaskMemory,
 ) {
   let (width, height) = image.dimensions();
@@ -536,7 +603,7 @@ pub(crate) fn overlay_image<I: GenericImageView<Pixel = Rgba<u8>>>(
   if transform.only_translation() && border.is_zero() {
     let translation = transform.decompose_translation();
 
-    return overlay_area(canvas, translation, size, mode, constrain, |x, y| {
+    return overlay_area(canvas, translation, size, mode, constrains, |x, y| {
       image.get_pixel(x, y)
     });
   }
@@ -594,7 +661,7 @@ pub(crate) fn overlay_image<I: GenericImageView<Pixel = Rgba<u8>>>(
       height: placement.height,
     },
     mode,
-    constrain,
+    constrains,
     get_original_pixel,
   );
 }
@@ -609,7 +676,7 @@ pub(crate) fn overlay_area(
   offset: Point<f32>,
   top_size: Size<u32>,
   mode: BlendMode,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
   f: impl Fn(u32, u32) -> Rgba<u8>,
 ) {
   if top_size.width == 0 || top_size.height == 0 {
@@ -644,7 +711,14 @@ pub(crate) fn overlay_area(
       let src_x = (dest_x - offset_x) as u32;
       let pixel = f(src_x, src_y);
 
-      draw_pixel(bottom, dest_x as u32, dest_y as u32, pixel, mode, constrain);
+      draw_pixel(
+        bottom,
+        dest_x as u32,
+        dest_y as u32,
+        pixel,
+        mode,
+        constrains,
+      );
     }
   }
 }

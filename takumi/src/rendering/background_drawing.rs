@@ -43,7 +43,7 @@ pub(crate) fn rasterize_layers(
           Affine::translation(x as f32, y as f32) * transform,
           context.style.image_rendering,
           layer.blend_mode,
-          None,
+          &[],
           mask_memory,
         );
       }

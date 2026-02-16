@@ -117,7 +117,7 @@ pub(crate) fn draw_glyph_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
           height: bitmap.placement.height,
         },
         BlendMode::Normal,
-        None,
+        &[],
         |x, y| {
           let alpha = mask[mask_index_from_coord(x, y, bitmap.placement.width)];
 
@@ -167,7 +167,7 @@ pub(crate) fn draw_glyph_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
           height: placement.height,
         },
         BlendMode::Normal,
-        canvas.constrains.last(),
+        &canvas.constrains,
         |x, y| {
           let alpha = mask[mask_index_from_coord(x, y, placement.width)];
 
@@ -239,7 +239,7 @@ pub(crate) fn draw_glyph(
           outline,
           palette,
           transform,
-          canvas.constrains.last(),
+          &canvas.constrains,
           color.0[3],
         );
       } else {
@@ -251,7 +251,7 @@ pub(crate) fn draw_glyph(
           placement,
           color,
           BlendMode::Normal,
-          canvas.constrains.last(),
+          &canvas.constrains,
         );
       }
 
@@ -298,7 +298,7 @@ fn draw_text_stroke_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
       height: stroke_placement.height,
     },
     BlendMode::Normal,
-    canvas.constrains.last(),
+    &canvas.constrains,
     |x, y| {
       let alpha = stroke_mask[mask_index_from_coord(x, y, stroke_placement.width)];
 
@@ -359,7 +359,7 @@ fn draw_text_stroke(
     stroke_placement,
     style.text_stroke_color,
     BlendMode::Normal,
-    canvas.constrains.last(),
+    &canvas.constrains,
   );
 }
 
@@ -377,7 +377,7 @@ fn draw_text_shadow(
     shadow.draw_outset(
       &mut canvas.image,
       &mut canvas.mask_memory,
-      canvas.constrains.last(),
+      &canvas.constrains,
       paths,
       transform,
       Default::default(),
@@ -401,7 +401,7 @@ fn draw_color_outline_image(
   outline: &Outline,
   palette: ColorPalette,
   transform: Affine,
-  constrain: Option<&CanvasConstrain>,
+  constrains: &[CanvasConstrain],
   opacity: u8,
 ) {
   if opacity == 0 {
@@ -427,7 +427,14 @@ fn draw_color_outline_image(
 
     let (mask, placement) = mask_memory.render(&paths, Some(transform), None);
 
-    draw_mask(canvas, mask, placement, color, BlendMode::Normal, constrain);
+    draw_mask(
+      canvas,
+      mask,
+      placement,
+      color,
+      BlendMode::Normal,
+      constrains,
+    );
   }
 }
 

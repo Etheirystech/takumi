@@ -273,7 +273,7 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
       shadow.draw_outset(
         &mut canvas.image,
         &mut canvas.mask_memory,
-        canvas.constrains.last(),
+        &canvas.constrains,
         &paths,
         context.transform,
         Fill::EvenOdd.into(),
