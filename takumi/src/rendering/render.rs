@@ -13,14 +13,16 @@ use crate::{
     inline::{InlineLayoutStage, create_inline_constraint, create_inline_layout},
     node::Node,
     style::{
-      Affine, Filter, ImageScalingAlgorithm, InheritedStyle, SpacePair, apply_backdrop_filter,
-      apply_filters,
+      Affine, BackgroundClip, Filter, ImageScalingAlgorithm, InheritedStyle, SpacePair,
+      apply_backdrop_filter, apply_filters,
     },
     tree::NodeTree,
   },
   rendering::{
-    BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, RenderContext, Sizing,
-    draw_debug_border, inline_drawing::fix_inline_box_y, overlay_image,
+    BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, DrawPhase, RenderContext,
+    Sizing, TextClipBackground, collect_background_layers, draw_debug_border,
+    inline_drawing::{fix_inline_box_y, render_abs_pos_children},
+    overlay_image, rasterize_layers,
   },
   resources::image::ImageSource,
 };
@@ -168,7 +170,36 @@ fn collect_measure_result<'g, Nodes: Node<Nodes>>(
       InlineLayoutStage::Measure,
     );
 
-    for line in inline_layout.lines() {
+    let lines = inline_layout.lines().collect::<Vec<_>>();
+    let mut next_nonzero_line_top = vec![0.0_f32; lines.len()];
+    let mut line_text_top = vec![0.0_f32; lines.len()];
+    let mut line_has_glyph = vec![false; lines.len()];
+    let mut next_top: Option<f32> = None;
+
+    for (idx, line) in lines.iter().enumerate() {
+      let mut top_from_glyph: Option<f32> = None;
+      for item in line.items() {
+        if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+          top_from_glyph = Some(glyph_run.baseline() - glyph_run.run().metrics().ascent);
+          break;
+        }
+      }
+
+      line_has_glyph[idx] = top_from_glyph.is_some();
+      line_text_top[idx] =
+        top_from_glyph.unwrap_or(line.metrics().baseline - line.metrics().ascent);
+    }
+
+    for (idx, line) in lines.iter().enumerate().rev() {
+      let metrics = line.metrics();
+      let top = line_text_top[idx];
+      if metrics.line_height >= 0.5 {
+        next_top = Some(top);
+      }
+      next_nonzero_line_top[idx] = next_top.unwrap_or(top);
+    }
+
+    for (line_idx, line) in lines.iter().enumerate() {
       for item in line.items() {
         match item {
           PositionedLayoutItem::GlyphRun(glyph_run) => {
@@ -187,7 +218,16 @@ fn collect_measure_result<'g, Nodes: Node<Nodes>>(
             });
           }
           PositionedLayoutItem::InlineBox(mut positioned_box) => {
-            fix_inline_box_y(&mut positioned_box.y, line.metrics());
+            let metrics = line.metrics();
+            if positioned_box.height < 0.5 {
+              positioned_box.y = if line_has_glyph[line_idx] {
+                line_text_top[line_idx]
+              } else {
+                next_nonzero_line_top[line_idx]
+              };
+            } else {
+              fix_inline_box_y(&mut positioned_box.y, metrics, positioned_box.height);
+            }
 
             let inline_transform =
               Affine::translation(positioned_box.x, positioned_box.y) * local_transform;
@@ -247,7 +287,7 @@ pub fn render<'g, N: Node<N>>(options: RenderOptions<'g, N>) -> Result<RgbaImage
   Ok(canvas.into_inner())
 }
 
-fn apply_transform(
+pub(crate) fn apply_transform(
   transform: &mut Affine,
   style: &InheritedStyle,
   border_box: Size<f32>,
@@ -320,6 +360,10 @@ fn render_node<'g, Nodes: Node<Nodes>>(
 
   node.context.transform = transform;
 
+  // During text draw phases (stroke/fill), skip non-text rendering to prevent
+  // double compositing of backgrounds, borders, filters, etc.
+  let is_text_phase = canvas.text_draw_phase.is_some();
+
   // Normal rendering path (no filters requiring node-level rendering)
   let constrain = CanvasConstrain::from_node(
     &node.context,
@@ -337,7 +381,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
   let has_constrain = constrain.is_some();
 
   // Apply backdrop-filter effects to the area behind this element
-  if !node.context.style.backdrop_filter.is_empty() {
+  if !is_text_phase && !node.context.style.backdrop_filter.is_empty() {
     let border = BorderProperties::from_context(&node.context, layout.size, layout.border);
 
     apply_backdrop_filter(canvas, border, layout.size, transform, &node.context);
@@ -345,11 +389,12 @@ fn render_node<'g, Nodes: Node<Nodes>>(
 
   // If isolated canvas is required, replace the current canvas with a new one.
   // Make sure to merge the image back!
-  let should_isolate = node.context.style.is_isolated()
-    || node
-      .context
-      .style
-      .has_non_identity_transform(layout.size, &node.context.sizing);
+  let should_isolate = !is_text_phase
+    && (node.context.style.is_isolated()
+      || node
+        .context
+        .style
+        .has_non_identity_transform(layout.size, &node.context.sizing));
 
   let original_canvas_image = if should_isolate {
     Some(canvas.replace_new_image())
@@ -357,26 +402,40 @@ fn render_node<'g, Nodes: Node<Nodes>>(
     None
   };
 
-  match constrain {
-    CanvasConstrainResult::None => {
-      node.draw_shell(canvas, layout)?;
+  if !is_text_phase {
+    match constrain {
+      CanvasConstrainResult::None => {
+        node.draw_shell(canvas, layout)?;
+      }
+      CanvasConstrainResult::Some(constrain) => match constrain {
+        CanvasConstrain::ClipPath { .. } | CanvasConstrain::MaskImage { .. } => {
+          canvas.push_constrain(constrain);
+          node.draw_shell(canvas, layout)?;
+        }
+        CanvasConstrain::Overflow { .. } => {
+          node.draw_shell(canvas, layout)?;
+          canvas.push_constrain(constrain);
+        }
+      },
+      CanvasConstrainResult::SkipRendering => unreachable!(),
     }
-    CanvasConstrainResult::Some(constrain) => match constrain {
-      CanvasConstrain::ClipPath { .. } | CanvasConstrain::MaskImage { .. } => {
-        canvas.push_constrain(constrain);
-        node.draw_shell(canvas, layout)?;
-      }
-      CanvasConstrain::Overflow { .. } => {
-        node.draw_shell(canvas, layout)?;
+  } else if has_constrain {
+    // During text phases, still push constrains (clip-path, overflow) so child
+    // text is clipped properly, but skip drawing the shell (background/border).
+    match constrain {
+      CanvasConstrainResult::Some(constrain) => {
         canvas.push_constrain(constrain);
       }
-    },
-    CanvasConstrainResult::SkipRendering => unreachable!(),
+      _ => {}
+    }
   }
 
+  // draw_content is NOT gated by is_text_phase because TextNode's draw_content
+  // calls draw_inline_layout which is already phase-aware. ImageNode's draw_content
+  // has its own is_text_phase check to skip during text phases.
   node.draw_content(canvas, layout)?;
 
-  if node.context.draw_debug_border {
+  if !is_text_phase && node.context.draw_debug_border {
     draw_debug_border(canvas, layout, transform);
   }
 
@@ -387,23 +446,76 @@ fn render_node<'g, Nodes: Node<Nodes>>(
   let opacity = node.context.style.opacity;
   let mix_blend_mode = node.context.style.mix_blend_mode;
   let should_create_inline = node.should_create_inline_layout();
+  let background_clip = node.context.style.background_clip;
 
   if opacity.0 < 1.0 {
     filters.push(Filter::Opacity(opacity));
   }
 
+  // Push text clip background for non-inline containers with background-clip: text.
+  // This lets descendant inline layouts use the ancestor's background as clip image.
+  let pushed_text_clip = if background_clip == BackgroundClip::Text && !should_create_inline {
+    let layers = collect_background_layers(&node.context, layout.size)?;
+    if let Some(rasterized) = rasterize_layers(
+      layers,
+      layout.size.map(|x| x.ceil() as u32),
+      &node.context,
+      BorderProperties::default(),
+      Affine::IDENTITY,
+      &mut canvas.mask_memory,
+    ) {
+      let image = rasterized.into_image();
+      canvas.push_text_clip_background(TextClipBackground { image, transform });
+      true
+    } else {
+      false
+    }
+  } else {
+    false
+  };
+
   if should_create_inline {
+    // Render abs-pos children first so they appear behind in-flow text
+    // (they serve as background layers, e.g., trigger badge trapezoid).
+    if let Some(abs_children) = &node.abs_pos_children {
+      render_abs_pos_children(abs_children, &node.context, canvas, layout)?;
+    }
+
     node.draw_inline(canvas, layout)?;
   } else {
     // Drop the node context reference so we can borrow taffy again
     let _ = node;
 
-    for child_id in taffy.children(node_id)? {
-      render_node(taffy, child_id, canvas, transform)?;
+    if pushed_text_clip {
+      // Two-pass rendering for containers with background-clip: text.
+      // First pass: draw all children's text strokes (shadows, faux-bold, text-stroke).
+      // Second pass: draw all children's text fills.
+      // This prevents a later child's stroke from covering an earlier child's fill.
+      let children = taffy.children(node_id)?;
+      let prev_phase = canvas.text_draw_phase;
+      canvas.text_draw_phase = Some(DrawPhase::Stroke);
+      for &child_id in &children {
+        render_node(taffy, child_id, canvas, transform)?;
+      }
+      canvas.text_draw_phase = Some(DrawPhase::Fill);
+      for &child_id in &children {
+        render_node(taffy, child_id, canvas, transform)?;
+      }
+      canvas.text_draw_phase = prev_phase;
+    } else {
+      for child_id in taffy.children(node_id)? {
+        render_node(taffy, child_id, canvas, transform)?;
+      }
     }
   }
 
-  apply_filters(&mut canvas.image, &sizing, current_color, filters.iter());
+  if pushed_text_clip {
+    canvas.pop_text_clip_background();
+  }
+
+  if !is_text_phase {
+    apply_filters(&mut canvas.image, &sizing, current_color, filters.iter());
+  }
 
   // If there was an isolated canvas, composite the filtered image back into the original canvas
   if let Some(mut original_canvas_image) = original_canvas_image {
@@ -414,7 +526,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
       Affine::IDENTITY,
       ImageScalingAlgorithm::Auto,
       mix_blend_mode,
-      None,
+      &[],
       &mut canvas.mask_memory,
     );
 

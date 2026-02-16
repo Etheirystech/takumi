@@ -64,7 +64,7 @@ impl SizedShadow {
     &self,
     canvas: &mut RgbaImage,
     mask_memory: &mut MaskMemory,
-    constrain: Option<&CanvasConstrain>,
+    constrains: &[CanvasConstrain],
     paths: D,
     transform: Affine,
     style: zeno::Style,
@@ -82,7 +82,7 @@ impl SizedShadow {
         placement,
         self.color,
         BlendMode::Normal,
-        constrain,
+        constrains,
       );
     }
 
@@ -104,7 +104,7 @@ impl SizedShadow {
       },
       self.color,
       BlendMode::Normal,
-      None,
+      &[],
     );
 
     apply_blur(&mut image, self.blur_radius, BlurType::Shadow);
@@ -119,7 +119,7 @@ impl SizedShadow {
       ),
       ImageScalingAlgorithm::Auto,
       BlendMode::Normal,
-      constrain,
+      constrains,
       mask_memory,
     );
   }
