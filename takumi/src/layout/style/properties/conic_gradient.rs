@@ -70,11 +70,10 @@ impl GenericImageView for ConicGradientTile {
     // Subtract start angle and normalize to [0, 2π)
     let adjusted = (angle_from_top - self.start_rad).rem_euclid(TAU);
 
-    // Normalize to [0.0, 1.0) and map to LUT using floor.
-    // This avoids architecture/libm-sensitive ties from floating-point round-to-nearest.
-    let normalized = adjusted / TAU;
+    // Quantize angle before LUT mapping to reduce tiny libm/arch differences near bin boundaries.
+    let quantized = (((adjusted / TAU) * 65_536.0).round() / 65_536.0).fract();
     let lut_idx =
-      ((normalized * self.color_lut.len() as f32).floor() as usize).min(self.color_lut.len() - 1);
+      ((quantized * self.color_lut.len() as f32).floor() as usize).min(self.color_lut.len() - 1);
 
     self.color_lut[lut_idx]
   }
@@ -91,8 +90,10 @@ impl ConicGradientTile {
     // Resolve stop percentages against one full turn (360deg).
     let resolved_stops = resolve_stops_along_axis(&gradient.stops, 360.0, context);
 
-    let diagonal = ((width as f32).powi(2) + (height as f32).powi(2)).sqrt();
-    let lut_size = adaptive_lut_size((TAU * diagonal).max(1.0));
+    // Keep LUT sizing deterministic across platforms by deriving from integer tile dimensions.
+    // 8 samples per pixel of the larger dimension provides enough angular density for conic edges.
+    let angular_axis = width.max(height).max(1) as f32 * 8.0;
+    let lut_size = adaptive_lut_size(angular_axis);
     let color_lut = build_color_lut(&resolved_stops, 360.0, lut_size);
 
     ConicGradientTile {
