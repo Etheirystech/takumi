@@ -3,9 +3,7 @@ use image::{GenericImageView, Rgba};
 use smallvec::SmallVec;
 use std::ops::{Deref, Neg};
 
-use super::gradient_utils::{
-  adaptive_lut_size, build_color_lut, parse_gradient_stops, resolve_stops_along_axis,
-};
+use super::gradient_utils::{adaptive_lut_size, build_color_lut, resolve_stops_along_axis};
 use crate::{
   layout::style::{
     Color, CssToken, FromCss, Length, ParseResult, declare_enum_from_css_impl,
@@ -304,8 +302,13 @@ impl<'i> FromCss<'i> for LinearGradient {
         Angle::new(180.0)
       };
 
-      // Parse color stops (with double-stop expansion)
-      let stops = parse_gradient_stops(input)?;
+      let mut stops = Vec::new();
+
+      stops.push(GradientStop::from_css(input)?);
+
+      while input.try_parse(Parser::expect_comma).is_ok() {
+        stops.push(GradientStop::from_css(input)?);
+      }
 
       Ok(LinearGradient {
         angle,

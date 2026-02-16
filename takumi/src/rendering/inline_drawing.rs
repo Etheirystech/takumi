@@ -242,7 +242,6 @@ pub(crate) fn draw_inline_box<N: Node<N>>(
       item.node.draw_background(&context, canvas, layout)?;
       item.node.draw_inset_box_shadow(&context, canvas, layout)?;
       item.node.draw_border(&context, canvas, layout)?;
-      item.node.draw_outline(&context, canvas, layout)?;
     }
     CanvasConstrainResult::Some(constrain) => match constrain {
       CanvasConstrain::ClipPath { .. } | CanvasConstrain::MaskImage { .. } => {
@@ -251,14 +250,12 @@ pub(crate) fn draw_inline_box<N: Node<N>>(
         item.node.draw_background(&context, canvas, layout)?;
         item.node.draw_inset_box_shadow(&context, canvas, layout)?;
         item.node.draw_border(&context, canvas, layout)?;
-        item.node.draw_outline(&context, canvas, layout)?;
       }
       CanvasConstrain::Overflow { .. } => {
         item.node.draw_outset_box_shadow(&context, canvas, layout)?;
         item.node.draw_background(&context, canvas, layout)?;
         item.node.draw_inset_box_shadow(&context, canvas, layout)?;
         item.node.draw_border(&context, canvas, layout)?;
-        item.node.draw_outline(&context, canvas, layout)?;
         canvas.push_constrain(constrain);
       }
     },
@@ -454,7 +451,6 @@ pub(crate) fn render_abs_pos_children<'g, N: Node<N>>(
           node.draw_background(&child_ctx, canvas, child_layout)?;
           node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
           node.draw_border(&child_ctx, canvas, child_layout)?;
-          node.draw_outline(&child_ctx, canvas, child_layout)?;
         }
       }
       CanvasConstrainResult::Some(constrain) => match constrain {
@@ -465,7 +461,6 @@ pub(crate) fn render_abs_pos_children<'g, N: Node<N>>(
             node.draw_background(&child_ctx, canvas, child_layout)?;
             node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
             node.draw_border(&child_ctx, canvas, child_layout)?;
-            node.draw_outline(&child_ctx, canvas, child_layout)?;
           }
         }
         CanvasConstrain::Overflow { .. } => {
@@ -474,7 +469,6 @@ pub(crate) fn render_abs_pos_children<'g, N: Node<N>>(
             node.draw_background(&child_ctx, canvas, child_layout)?;
             node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
             node.draw_border(&child_ctx, canvas, child_layout)?;
-            node.draw_outline(&child_ctx, canvas, child_layout)?;
           }
           canvas.push_constrain(constrain);
         }
@@ -764,13 +758,13 @@ fn compute_faux_bold_width(font: FontRef, style: &SizedFontStyle, font_size: f32
 ///
 /// Returns 1.0 when no synthesis is needed (font supports wdth axis or
 /// normal width is requested).
-fn compute_faux_stretch_factor(font: FontRef, style: &SizedFontStyle) -> f32 {
+fn compute_faux_stretch_factor(font: FontRef, _style: &SizedFontStyle) -> f32 {
   const WDTH: swash::Tag = swash::tag_from_bytes(b"wdth");
   if font.variations().any(|v| v.tag() == WDTH) {
     return 1.0;
   }
 
-  let requested_width: FontWidth = style.parent.font_stretch.into();
+  let requested_width: FontWidth = FontWidth::NORMAL;
   let ratio = requested_width.ratio();
 
   if (ratio - 1.0).abs() < f32::EPSILON {

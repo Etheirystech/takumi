@@ -1,7 +1,7 @@
 use std::{borrow::Cow, marker::PhantomData};
 
 use derive_builder::Builder;
-use parley::{FontSettings, FontStack, TextStyle};
+use parley::{FontSettings, FontStack, FontWidth, TextStyle};
 use serde::Deserialize;
 use smallvec::SmallVec;
 use taffy::{Point, Size, prelude::FromLength};
@@ -155,7 +155,6 @@ define_style!(
   text_overflow: TextOverflow,
   text_transform: TextTransform where inherit = true,
   font_style: FontStyle where inherit = true,
-  font_stretch: FontStretch where inherit = true,
   border_color: Option<ColorInput>,
   color: ColorInput where inherit = true,
   filter: Filters,
@@ -193,11 +192,6 @@ define_style!(
   text_wrap_mode: Option<TextWrapMode> where inherit = true,
   text_wrap_style: Option<TextWrapStyle> where inherit = true,
   text_wrap: TextWrap where inherit = true,
-  outline: Outline,
-  outline_width: Option<Length>,
-  outline_style: Option<BorderStyle>,
-  outline_color: Option<ColorInput>,
-  outline_offset: Option<Length>,
   isolation: Isolation,
   mix_blend_mode: BlendMode,
   visibility: Visibility,
@@ -258,7 +252,7 @@ impl<'s> From<&'s SizedFontStyle<'s>> for TextStyle<'s, InlineBrush> {
       },
       text_wrap_mode: style.parent.text_wrap_mode_and_line_clamp().0.into(),
 
-      font_width: style.parent.font_stretch.into(),
+      font_width: FontWidth::NORMAL,
       locale: None,
       has_underline: false,
       underline_offset: None,
