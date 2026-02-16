@@ -4,7 +4,7 @@ use smallvec::SmallVec;
 use std::ops::{Deref, Neg};
 
 use super::gradient_utils::{
-  adaptive_lut_size, build_color_lut, parse_gradient_stops, resolve_stops_along_axis,
+  GradientStops, adaptive_lut_size, build_color_lut, resolve_stops_along_axis,
 };
 use crate::{
   layout::style::{
@@ -305,7 +305,7 @@ impl<'i> FromCss<'i> for LinearGradient {
       };
 
       // Parse color stops (with double-stop expansion)
-      let stops = parse_gradient_stops(input)?;
+      let GradientStops(stops) = GradientStops::from_css(input)?;
 
       Ok(LinearGradient {
         angle,

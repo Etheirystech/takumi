@@ -3,7 +3,7 @@ use image::{GenericImageView, Rgba};
 use smallvec::SmallVec;
 
 use super::gradient_utils::{
-  adaptive_lut_size, build_color_lut, parse_gradient_stops, resolve_stops_along_axis,
+  GradientStops, adaptive_lut_size, build_color_lut, resolve_stops_along_axis,
 };
 use crate::{
   layout::style::{
@@ -152,7 +152,7 @@ impl<'i> FromCss<'i> for ConicGradient {
       }
 
       // Parse color stops (with double-stop expansion)
-      let stops = parse_gradient_stops(input)?;
+      let GradientStops(stops) = GradientStops::from_css(input)?;
 
       Ok(ConicGradient {
         from_angle: from_angle.unwrap_or(Angle::zero()),
