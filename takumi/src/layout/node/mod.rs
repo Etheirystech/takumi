@@ -8,7 +8,6 @@ pub use text::*;
 
 use serde::Deserialize;
 use taffy::{AvailableSpace, Layout, Point, Size};
-use zeno::Fill;
 
 use crate::{
   Result,
@@ -248,7 +247,7 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
       return Ok(());
     };
 
-    let border_radius = BorderProperties::from_context(context, layout.size, layout.border);
+    let element_border_radius = BorderProperties::from_context(context, layout.size, layout.border);
 
     for shadow in box_shadow.iter() {
       if shadow.inset {
@@ -257,33 +256,38 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
 
       let mut paths = Vec::new();
 
-      let mut border_radius = border_radius;
+      let mut border_radius = element_border_radius;
       let resolved_spread_radius = shadow
         .spread_radius
-        .to_px(&context.sizing, layout.size.width)
-        .max(0.0);
+        .to_px(&context.sizing, layout.size.width);
 
       border_radius.expand_by(Sides([resolved_spread_radius; 4]).into());
 
       let shadow =
         SizedShadow::from_box_shadow(*shadow, &context.sizing, context.current_color, layout.size);
 
+      let spread_size = Size {
+        width: (layout.size.width + 2.0 * resolved_spread_radius).max(0.0),
+        height: (layout.size.height + 2.0 * resolved_spread_radius).max(0.0),
+      };
+
       border_radius.append_mask_commands(
         &mut paths,
-        layout.size,
+        spread_size,
         Point {
-          x: -shadow.spread_radius,
-          y: -shadow.spread_radius,
+          x: -resolved_spread_radius,
+          y: -resolved_spread_radius,
         },
       );
 
-      shadow.draw_outset(
+      shadow.draw_outset_ring(
         &mut canvas.image,
         &mut canvas.mask_memory,
         canvas.constrains.last(),
         &paths,
+        element_border_radius,
+        layout.size,
         context.transform,
-        Fill::EvenOdd.into(),
       );
     }
 
