@@ -20,7 +20,9 @@ use crate::{
   },
   rendering::{
     BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, RenderContext, Sizing,
-    draw_debug_border, inline_drawing::fix_inline_box_y, overlay_image,
+    draw_debug_border,
+    inline_drawing::{fix_inline_box_y, render_abs_pos_children},
+    overlay_image,
   },
   resources::image::ImageSource,
 };
@@ -431,6 +433,12 @@ fn render_node<'g, Nodes: Node<Nodes>>(
   }
 
   if should_create_inline {
+    // Render abs-pos children first so they appear behind in-flow text
+    // (they serve as background layers, e.g., trigger badge trapezoid).
+    if let Some(abs_children) = &node.abs_pos_children {
+      render_abs_pos_children(abs_children, &node.context, canvas, layout)?;
+    }
+
     node.draw_inline(canvas, layout)?;
   } else {
     // Drop the node context reference so we can borrow taffy again

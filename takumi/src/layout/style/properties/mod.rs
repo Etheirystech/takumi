@@ -628,6 +628,9 @@ pub enum Display {
   Inline,
   /// The element creates a block container and its children follow the block layout algorithm
   Block,
+  /// The element is inline-level (positioned by parent's inline flow) but creates a block
+  /// formatting context internally. Children follow block/inline layout rules.
+  InlineBlock,
 }
 
 declare_enum_from_css_impl!(
@@ -636,12 +639,20 @@ declare_enum_from_css_impl!(
   "flex" => Display::Flex,
   "grid" => Display::Grid,
   "inline" => Display::Inline,
-  "block" => Display::Block
+  "block" => Display::Block,
+  "inline-block" => Display::InlineBlock
 );
 
 impl Display {
-  /// Returns true if the display is inline.
+  /// Returns true if the element participates in inline flow (for the parent's layout).
+  /// Both `Inline` and `InlineBlock` are inline-level elements.
   pub fn is_inline(&self) -> bool {
+    matches!(self, Display::Inline | Display::InlineBlock)
+  }
+
+  /// Returns true if the element's children flow through into the parent's inline context.
+  /// Only pure `Inline` elements do this — `InlineBlock` creates its own formatting context.
+  pub fn is_inline_flow_through(&self) -> bool {
     *self == Display::Inline
   }
 
@@ -653,7 +664,7 @@ impl Display {
   /// Cast the display to block level.
   pub fn as_blockified(self) -> Self {
     match self {
-      Display::Inline => Display::Block,
+      Display::Inline | Display::InlineBlock => Display::Block,
       _ => self,
     }
   }
@@ -669,7 +680,7 @@ impl From<Display> for taffy::Display {
     match value {
       Display::Flex => taffy::Display::Flex,
       Display::Grid => taffy::Display::Grid,
-      Display::Block => taffy::Display::Block,
+      Display::Block | Display::InlineBlock => taffy::Display::Block,
       Display::None => taffy::Display::None,
       Display::Inline => unreachable!("Inline node should not be inserted into taffy context"),
     }

@@ -77,9 +77,15 @@ impl<Nodes: Node<Nodes>> Node<Nodes> for TextNode {
       return Ok(());
     }
 
-    let max_height = match font_style.parent.line_clamp.as_ref() {
-      Some(clamp) => Some(MaxHeight::HeightAndLines(size.height, clamp.count)),
-      None => Some(MaxHeight::Absolute(size.height)),
+    let overflow = context.style.resolve_overflows();
+    let limits_content = overflow.x == crate::layout::style::Overflow::Hidden
+      || overflow.y == crate::layout::style::Overflow::Hidden;
+
+    let max_height = match (limits_content, font_style.parent.line_clamp.as_ref()) {
+      (true, Some(clamp)) => Some(MaxHeight::HeightAndLines(size.height, clamp.count)),
+      (true, None) => Some(MaxHeight::Absolute(size.height)),
+      (false, Some(clamp)) => Some(MaxHeight::Lines(clamp.count)),
+      (false, None) => None,
     };
 
     let inline_text: InlineItem<'_, '_, Nodes> = InlineItem::Text {

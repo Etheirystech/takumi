@@ -7,7 +7,7 @@ use crate::{
   GlobalContext,
   layout::{
     node::Node,
-    style::{Color, SizedFontStyle, TextOverflow, TextWrapStyle},
+    style::{Color, Display, SizedFontStyle, TextOverflow, TextWrapStyle},
     tree::NodeTree,
   },
   rendering::{
@@ -29,14 +29,19 @@ pub(crate) struct InlineBoxItem<'c, 'g, N: Node<N>> {
   pub(crate) margin: Rect<f32>,
   pub(crate) padding: Rect<f32>,
   pub(crate) border: Rect<f32>,
+  /// For inline-block nodes: reference to the full NodeTree for subtree rendering.
+  pub(crate) node_tree: Option<&'c NodeTree<'g, N>>,
 }
 
 impl<N: Node<N>> From<&InlineBoxItem<'_, '_, N>> for Layout {
   fn from(value: &InlineBoxItem<'_, '_, N>) -> Self {
+    // The InlineBox dimensions include margin (for parley's line space allocation).
+    // The Layout size should be the border box (without margin) for correct rendering.
+    // Margin only affects positioning (handled via margin offset in draw_inline_box).
     Layout {
       size: Size {
-        width: value.inline_box.width,
-        height: value.inline_box.height,
+        width: value.inline_box.width - value.margin.grid_axis_sum(taffy::AbsoluteAxis::Horizontal),
+        height: value.inline_box.height - value.margin.grid_axis_sum(taffy::AbsoluteAxis::Vertical),
       },
       margin: value.margin,
       padding: value.padding,
@@ -63,6 +68,9 @@ pub(crate) enum InlineItem<'c, 'g, N: Node<N>> {
     text: Cow<'c, str>,
     context: &'c RenderContext<'g>,
   },
+  /// An inline-block node: participates in inline flow but is an opaque box.
+  /// Contains the full NodeTree for internal measurement and rendering.
+  InlineBlock { node_tree: &'c NodeTree<'g, N> },
 }
 
 pub enum InlineContentKind<'c> {
@@ -183,7 +191,93 @@ pub(crate) fn create_inline_layout<'c, 'g: 'c, N: Node<N> + 'c>(
             margin,
             padding,
             border,
+            node_tree: None,
           }));
+
+          builder.push_inline_box(inline_box);
+          idx += 1;
+        }
+        InlineItem::InlineBlock { node_tree } => {
+          let context = &node_tree.context;
+          let margin = context
+            .style
+            .resolved_margin()
+            .map(|length| length.to_px(&context.sizing, 0.0));
+          let padding = context
+            .style
+            .resolved_padding()
+            .map(|length| length.to_px(&context.sizing, 0.0));
+          let border = context
+            .style
+            .resolved_border_width()
+            .map(|length| length.to_px(&context.sizing, 0.0));
+
+          // Measure the inline-block's internal content layout
+          let content_size =
+            node_tree.measure(available_space, Size::NONE, &taffy::Style::default());
+
+          // Respect explicit width/height from CSS style, falling back to measured content size.
+          let pad_border_h = padding.grid_axis_sum(taffy::AbsoluteAxis::Horizontal)
+            + border.grid_axis_sum(taffy::AbsoluteAxis::Horizontal);
+          let pad_border_v = padding.grid_axis_sum(taffy::AbsoluteAxis::Vertical)
+            + border.grid_axis_sum(taffy::AbsoluteAxis::Vertical);
+
+          use crate::layout::style::Length;
+          let explicit_width = match context.style.width {
+            Length::Auto => None,
+            w => Some(w.to_px(&context.sizing, 0.0)),
+          };
+          let explicit_height = match context.style.height {
+            Length::Auto => None,
+            h => Some(h.to_px(&context.sizing, 0.0)),
+          };
+          let is_abs_pos = context.style.position == crate::layout::style::Position::Absolute;
+
+          let actual_height = explicit_height.unwrap_or(content_size.height + pad_border_v)
+            + margin.grid_axis_sum(taffy::AbsoluteAxis::Vertical);
+
+          // When the inline-block has line-height: 0, report height as 0 to parley
+          // so it doesn't inflate the parent's line height. This lets the parent's
+          // CSS line-height be the sole controller of row spacing.
+          let resolved_line_height = context.style.line_height.into_parley(&context.sizing);
+          let parley_height = if is_abs_pos {
+            0.0
+          } else {
+            match resolved_line_height {
+              // Use a small non-zero height to keep the box in parley's line flow
+              // while remaining metric-neutral for row metrics.
+              parley::LineHeight::Absolute(h) if h < 0.5 => 0.49,
+              _ => actual_height,
+            }
+          };
+
+          let inline_box = InlineBox {
+            index: index_pos,
+            id: idx,
+            width: if is_abs_pos {
+              0.0
+            } else {
+              explicit_width.unwrap_or(content_size.width + pad_border_h)
+                + margin.grid_axis_sum(taffy::AbsoluteAxis::Horizontal)
+            },
+            height: parley_height,
+          };
+
+          if let Some(node) = &node_tree.node {
+            spans.push(ProcessedInlineSpan::Box(InlineBoxItem {
+              node,
+              context,
+              // Always store actual height for rendering (may differ from parley_height)
+              inline_box: InlineBox {
+                height: actual_height,
+                ..inline_box.clone()
+              },
+              margin,
+              padding,
+              border,
+              node_tree: Some(node_tree),
+            }));
+          }
 
           builder.push_inline_box(inline_box);
           idx += 1;
@@ -395,6 +489,15 @@ impl<'n, 'g, N: Node<N>> Iterator for InlineItemIterator<'n, 'g, N> {
       }
 
       let (node, depth) = self.stack.pop()?;
+
+      // InlineBlock nodes at depth > 0 are opaque inline boxes — don't recurse into their
+      // children. They'll be measured and drawn as self-contained subtrees.
+      // Depth 0 is the root (e.g., the Block/InlineBlock parent calling inline_items_iter()),
+      // which should always be traversed into.
+      if depth > 0 && node.context.style.display == Display::InlineBlock {
+        self.current_node_content = Some(InlineItem::InlineBlock { node_tree: node });
+        continue;
+      }
 
       if let Some(children) = &node.children {
         for child in children.iter().rev() {
