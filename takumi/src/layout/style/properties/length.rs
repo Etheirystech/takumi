@@ -11,6 +11,102 @@ use crate::{
   rendering::Sizing,
 };
 
+/// Represents a parsed `calc()` expression as a sum of percentage, em, rem, vh, vw, and px components.
+///
+/// Covers patterns like `calc(100% - 0.6em)`, `calc(100vh - 60px)`, etc.
+/// Other absolute units (cm, mm, in, pt, pc) are converted to px at parse time.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct CalcExpr {
+  /// Percentage component (0-100 scale)
+  pub percentage: f32,
+  /// Em component (relative to current font-size)
+  pub em: f32,
+  /// Rem component (relative to root font-size)
+  pub rem: f32,
+  /// Vh component (relative to viewport height, 0-100 scale)
+  pub vh: f32,
+  /// Vw component (relative to viewport width, 0-100 scale)
+  pub vw: f32,
+  /// Absolute pixel component
+  pub px: f32,
+}
+
+impl CalcExpr {
+  const ONE_CM_IN_PX: f32 = 96.0 / 2.54;
+  const ONE_MM_IN_PX: f32 = Self::ONE_CM_IN_PX / 10.0;
+  const ONE_Q_IN_PX: f32 = Self::ONE_CM_IN_PX / 40.0;
+  const ONE_IN_PX: f32 = 96.0;
+  const ONE_PT_IN_PX: f32 = Self::ONE_IN_PX / 72.0;
+  const ONE_PC_IN_PX: f32 = Self::ONE_IN_PX / 6.0;
+
+  /// Add a Length term to this calc expression.
+  fn add_term<const DEFAULT_AUTO: bool>(&mut self, length: Length<DEFAULT_AUTO>, negate: bool) {
+    let sign = if negate { -1.0 } else { 1.0 };
+    match length {
+      Length::Percentage(v) => self.percentage += v * sign,
+      Length::Em(v) => self.em += v * sign,
+      Length::Rem(v) => self.rem += v * sign,
+      Length::Px(v) => self.px += v * sign,
+      Length::Vh(v) => self.vh += v * sign,
+      Length::Vw(v) => self.vw += v * sign,
+      Length::Calc(inner) => {
+        self.percentage += inner.percentage * sign;
+        self.em += inner.em * sign;
+        self.rem += inner.rem * sign;
+        self.vh += inner.vh * sign;
+        self.vw += inner.vw * sign;
+        self.px += inner.px * sign;
+      }
+      // Convert other absolute units to px at parse time
+      Length::Cm(v) => self.px += v * Self::ONE_CM_IN_PX * sign,
+      Length::Mm(v) => self.px += v * Self::ONE_MM_IN_PX * sign,
+      Length::In(v) => self.px += v * Self::ONE_IN_PX * sign,
+      Length::Q(v) => self.px += v * Self::ONE_Q_IN_PX * sign,
+      Length::Pt(v) => self.px += v * Self::ONE_PT_IN_PX * sign,
+      Length::Pc(v) => self.px += v * Self::ONE_PC_IN_PX * sign,
+      // Auto can't be resolved in calc — treat as 0
+      Length::Auto => {}
+    }
+  }
+
+  /// Try to simplify to a simple Length value when only one component is non-zero.
+  fn simplify<const DEFAULT_AUTO: bool>(self) -> Length<DEFAULT_AUTO> {
+    let has_pct = self.percentage != 0.0;
+    let has_em = self.em != 0.0;
+    let has_rem = self.rem != 0.0;
+    let has_vh = self.vh != 0.0;
+    let has_vw = self.vw != 0.0;
+    let has_px = self.px != 0.0;
+
+    let count =
+      has_pct as u8 + has_em as u8 + has_rem as u8 + has_vh as u8 + has_vw as u8 + has_px as u8;
+
+    if count == 0 {
+      return Length::Px(0.0);
+    }
+    if count == 1 {
+      if has_pct {
+        return Length::Percentage(self.percentage);
+      }
+      if has_em {
+        return Length::Em(self.em);
+      }
+      if has_rem {
+        return Length::Rem(self.rem);
+      }
+      if has_vh {
+        return Length::Vh(self.vh);
+      }
+      if has_vw {
+        return Length::Vw(self.vw);
+      }
+      return Length::Px(self.px);
+    }
+
+    Length::Calc(self)
+  }
+}
+
 /// Represents a value that can be a specific length, percentage, or automatic.
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum Length<const DEFAULT_AUTO: bool = true> {
@@ -40,6 +136,8 @@ pub enum Length<const DEFAULT_AUTO: bool = true> {
   Pc(f32),
   /// Specific pixel value
   Px(f32),
+  /// A calc() expression combining percentage, em, rem, and/or px components.
+  Calc(CalcExpr),
 }
 
 impl<const DEFAULT_AUTO: bool> Default for Length<DEFAULT_AUTO> {
@@ -118,6 +216,14 @@ impl<const DEFAULT_AUTO: bool> Length<DEFAULT_AUTO> {
       Length::Pt(v) => Length::Pt(-v),
       Length::Pc(v) => Length::Pc(-v),
       Length::Px(v) => Length::Px(-v),
+      Length::Calc(expr) => Length::Calc(CalcExpr {
+        percentage: -expr.percentage,
+        em: -expr.em,
+        rem: -expr.rem,
+        vh: -expr.vh,
+        vw: -expr.vw,
+        px: -expr.px,
+      }),
     }
   }
 }
@@ -130,6 +236,14 @@ impl<const DEFAULT_AUTO: bool> From<f32> for Length<DEFAULT_AUTO> {
 
 impl<'i, const DEFAULT_AUTO: bool> FromCss<'i> for Length<DEFAULT_AUTO> {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
+    // Try parsing calc() first
+    if let Ok(result) = input.try_parse(|input| {
+      input.expect_function_matching("calc")?;
+      input.parse_nested_block(Self::parse_calc_inner)
+    }) {
+      return Ok(result);
+    }
+
     let location = input.current_source_location();
     let token = input.next()?;
 
@@ -168,6 +282,74 @@ impl<'i, const DEFAULT_AUTO: bool> FromCss<'i> for Length<DEFAULT_AUTO> {
 }
 
 impl<const DEFAULT_AUTO: bool> Length<DEFAULT_AUTO> {
+  /// Parse the inner content of a `calc()` function.
+  ///
+  /// Parses additive expressions like `100% - 0.6em` or `50% + 10px + 2em`.
+  /// Terms are parsed as simple Length values, combined with `+` or `-` operators.
+  fn parse_calc_inner<'i>(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
+    let mut expr = CalcExpr::default();
+
+    // Parse first term
+    let first = Self::parse_calc_term(input)?;
+    expr.add_term(first, false);
+
+    // Parse remaining terms: operator (+ or -) followed by a term
+    loop {
+      let negate = if input.try_parse(|i| i.expect_delim('+')).is_ok() {
+        false
+      } else if input.try_parse(|i| i.expect_delim('-')).is_ok() {
+        true
+      } else {
+        break;
+      };
+
+      let term = Self::parse_calc_term(input)?;
+      expr.add_term(term, negate);
+    }
+
+    Ok(expr.simplify())
+  }
+
+  /// Parse a single term inside a calc() expression.
+  /// Handles simple values (dimensions, percentages, numbers) and nested calc().
+  fn parse_calc_term<'i>(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
+    // Try nested calc() or other functions
+    if let Ok(result) = input.try_parse(|input| {
+      input.expect_function_matching("calc")?;
+      input.parse_nested_block(Self::parse_calc_inner)
+    }) {
+      return Ok(result);
+    }
+
+    // Parse simple value (dimension, percentage, number)
+    let location = input.current_source_location();
+    let token = input.next()?;
+
+    match *token {
+      Token::Dimension {
+        value, ref unit, ..
+      } => {
+        match_ignore_ascii_case! {&unit,
+          "px" => Ok(Self::Px(value)),
+          "em" => Ok(Self::Em(value)),
+          "rem" => Ok(Self::Rem(value)),
+          "vw" => Ok(Self::Vw(value)),
+          "vh" => Ok(Self::Vh(value)),
+          "cm" => Ok(Self::Cm(value)),
+          "mm" => Ok(Self::Mm(value)),
+          "in" => Ok(Self::In(value)),
+          "q" => Ok(Self::Q(value)),
+          "pt" => Ok(Self::Pt(value)),
+          "pc" => Ok(Self::Pc(value)),
+          _ => Err(Self::unexpected_token_error(location, token)),
+        }
+      }
+      Token::Percentage { unit_value, .. } => Ok(Self::Percentage(unit_value * 100.0)),
+      Token::Number { value, .. } => Ok(Self::Px(value)),
+      _ => Err(Self::unexpected_token_error(location, token)),
+    }
+  }
+
   /// Converts the length unit to a compact length representation.
   ///
   /// This method converts the length unit (either a percentage, pixel, rem, em, vh, vw, or auto)
@@ -230,6 +412,16 @@ impl<const DEFAULT_AUTO: bool> Length<DEFAULT_AUTO> {
       Length::Q(value) => value * ONE_Q_IN_PX,
       Length::Pt(value) => value * ONE_PT_IN_PX,
       Length::Pc(value) => value * ONE_PC_IN_PX,
+      Length::Calc(expr) => {
+        // Resolve each component independently with its own DPR handling
+        let pct_px = (expr.percentage / 100.0) * percentage_full_px;
+        let em_px = expr.em * sizing.font_size;
+        let rem_px = expr.rem * sizing.viewport.font_size * sizing.viewport.device_pixel_ratio;
+        let vh_px = expr.vh * sizing.viewport.height.unwrap_or_default() as f32 / 100.0;
+        let vw_px = expr.vw * sizing.viewport.width.unwrap_or_default() as f32 / 100.0;
+        let px_px = expr.px * sizing.viewport.device_pixel_ratio;
+        return pct_px + em_px + rem_px + vh_px + vw_px + px_px;
+      }
     };
 
     if matches!(
@@ -251,5 +443,131 @@ impl<const DEFAULT_AUTO: bool> Length<DEFAULT_AUTO> {
   /// Resolves the length unit to a `Dimension`.
   pub(crate) fn resolve_to_dimension(self, sizing: &Sizing) -> Dimension {
     self.resolve_to_length_percentage_auto(sizing).into()
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn test_parse_calc_percentage_plus_em() {
+    let result = Length::<true>::from_str("calc(100% - 0.6em)");
+    assert_eq!(
+      result,
+      Ok(Length::Calc(CalcExpr {
+        percentage: 100.0,
+        em: -0.6,
+        rem: 0.0,
+        vh: 0.0,
+        vw: 0.0,
+        px: 0.0,
+      }))
+    );
+  }
+
+  #[test]
+  fn test_parse_calc_zero_percentage_plus_em() {
+    // calc(0% + 0.6em) should simplify to just Em(0.6)
+    let result = Length::<true>::from_str("calc(0% + 0.6em)");
+    assert_eq!(result, Ok(Length::Em(0.6)));
+  }
+
+  #[test]
+  fn test_parse_calc_same_units_simplify() {
+    // calc(50% + 25%) should simplify to Percentage(75.0)
+    let result = Length::<true>::from_str("calc(50% + 25%)");
+    assert_eq!(result, Ok(Length::Percentage(75.0)));
+  }
+
+  #[test]
+  fn test_parse_calc_em_only_simplify() {
+    // calc(1em + 2em) should simplify to Em(3.0)
+    let result = Length::<true>::from_str("calc(1em + 2em)");
+    assert_eq!(result, Ok(Length::Em(3.0)));
+  }
+
+  #[test]
+  fn test_parse_calc_percentage_plus_px() {
+    let result = Length::<true>::from_str("calc(100% - 10px)");
+    assert_eq!(
+      result,
+      Ok(Length::Calc(CalcExpr {
+        percentage: 100.0,
+        em: 0.0,
+        rem: 0.0,
+        vh: 0.0,
+        vw: 0.0,
+        px: -10.0,
+      }))
+    );
+  }
+
+  #[test]
+  fn test_parse_calc_three_terms() {
+    let result = Length::<true>::from_str("calc(50% + 1em + 5px)");
+    assert_eq!(
+      result,
+      Ok(Length::Calc(CalcExpr {
+        percentage: 50.0,
+        em: 1.0,
+        rem: 0.0,
+        vh: 0.0,
+        vw: 0.0,
+        px: 5.0,
+      }))
+    );
+  }
+
+  #[test]
+  fn test_parse_calc_negative() {
+    let result = Length::<true>::from_str("calc(100% - 0.6em)");
+    assert!(result.is_ok());
+    let negated = result.unwrap().negative();
+    assert_eq!(
+      negated,
+      Length::Calc(CalcExpr {
+        percentage: -100.0,
+        em: 0.6,
+        rem: 0.0,
+        vh: 0.0,
+        vw: 0.0,
+        px: 0.0,
+      })
+    );
+  }
+
+  #[test]
+  fn test_parse_calc_vh_minus_px() {
+    let result = Length::<true>::from_str("calc(100vh - 60px)");
+    assert_eq!(
+      result,
+      Ok(Length::Calc(CalcExpr {
+        percentage: 0.0,
+        em: 0.0,
+        rem: 0.0,
+        vh: 100.0,
+        vw: 0.0,
+        px: -60.0,
+      }))
+    );
+  }
+
+  #[test]
+  fn test_parse_calc_vw_simplify() {
+    // calc(50vw + 50vw) should simplify to Vw(100.0)
+    let result = Length::<true>::from_str("calc(50vw + 50vw)");
+    assert_eq!(result, Ok(Length::Vw(100.0)));
+  }
+
+  #[test]
+  fn test_parse_non_calc_still_works() {
+    assert_eq!(Length::<true>::from_str("10px"), Ok(Length::Px(10.0)));
+    assert_eq!(
+      Length::<true>::from_str("50%"),
+      Ok(Length::Percentage(50.0))
+    );
+    assert_eq!(Length::<true>::from_str("2em"), Ok(Length::Em(2.0)));
+    assert_eq!(Length::<true>::from_str("auto"), Ok(Length::Auto));
   }
 }
