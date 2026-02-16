@@ -4,6 +4,9 @@ use parley::FontWidth;
 use crate::layout::style::{CssToken, FromCss, ParseResult, tw::TailwindPropertyParser};
 
 /// Controls the width/stretch of text rendering.
+///
+/// Maps to the CSS `font-stretch` property and wraps parley's `FontWidth`.
+/// Supports both keyword values (e.g., `condensed`, `expanded`) and percentage values.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct FontStretch(FontWidth);
 
@@ -11,10 +14,12 @@ impl<'i> FromCss<'i> for FontStretch {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
     let location = input.current_source_location();
 
-    if let Ok(value) = input.try_parse(Parser::expect_percentage) {
-      return Ok(Self(FontWidth::from_percentage(value.max(0.0) * 100.0)));
+    // Try parsing as a percentage first (e.g., `75%`, `112.5%`)
+    if let Ok(value) = input.try_parse(|input| input.expect_percentage()) {
+      return Ok(Self(FontWidth::from_percentage(value * 100.0)));
     }
 
+    // Parse as keyword
     let ident = input.expect_ident()?;
     match_ignore_ascii_case! { ident,
       "normal" => Ok(Self(FontWidth::NORMAL)),
@@ -48,7 +53,21 @@ impl<'i> FromCss<'i> for FontStretch {
 
 impl TailwindPropertyParser for FontStretch {
   fn parse_tw(token: &str) -> Option<Self> {
-    Self::from_str(token).ok()
+    match_ignore_ascii_case! {token,
+      "normal" => Some(Self(FontWidth::NORMAL)),
+      "ultra-condensed" => Some(Self(FontWidth::ULTRA_CONDENSED)),
+      "extra-condensed" => Some(Self(FontWidth::EXTRA_CONDENSED)),
+      "condensed" => Some(Self(FontWidth::CONDENSED)),
+      "semi-condensed" => Some(Self(FontWidth::SEMI_CONDENSED)),
+      "semi-expanded" => Some(Self(FontWidth::SEMI_EXPANDED)),
+      "expanded" => Some(Self(FontWidth::EXPANDED)),
+      "extra-expanded" => Some(Self(FontWidth::EXTRA_EXPANDED)),
+      "ultra-expanded" => Some(Self(FontWidth::ULTRA_EXPANDED)),
+      _ => {
+        let value = token.parse::<f32>().ok()?;
+        Some(Self(FontWidth::from_percentage(value)))
+      },
+    }
   }
 }
 
@@ -81,10 +100,8 @@ mod tests {
 
   #[test]
   fn test_parse_font_stretch_percentage() {
-    assert_eq!(
-      FontStretch::from_str("75%"),
-      Ok(FontStretch(FontWidth::CONDENSED))
-    );
+    let result = FontStretch::from_str("75%").unwrap();
+    assert_eq!(FontWidth::from(result), FontWidth::CONDENSED);
   }
 
   #[test]
@@ -103,11 +120,11 @@ mod tests {
   #[test]
   fn test_tailwind_parser_percentage() {
     assert_eq!(
-      FontStretch::parse_tw("75%"),
+      FontStretch::parse_tw("75"),
       Some(FontStretch(FontWidth::CONDENSED))
     );
     assert_eq!(
-      FontStretch::parse_tw("150%"),
+      FontStretch::parse_tw("150"),
       Some(FontStretch(FontWidth::EXTRA_EXPANDED))
     );
   }
