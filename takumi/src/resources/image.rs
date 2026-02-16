@@ -108,8 +108,35 @@ pub fn load_image_source_from_bytes(bytes: &[u8]) -> ImageResult {
 }
 
 /// Check if the bytes are an SVG image.
+///
+/// Handles SVG files that start with an XML declaration (`<?xml ...?>`)
+/// and/or a DOCTYPE (`<!DOCTYPE ...>`) before the `<svg` root element.
 pub(crate) fn is_svg(src: &str) -> bool {
-  src.trim_start().starts_with("<svg") && src.contains("xmlns=\"http://www.w3.org/2000/svg\"")
+  if !src.contains("xmlns=\"http://www.w3.org/2000/svg\"") {
+    return false;
+  }
+
+  let mut s = src.trim_start();
+
+  // Skip XML declaration: <?xml ... ?>
+  if s.starts_with("<?xml") {
+    if let Some(end) = s.find("?>") {
+      s = s[end + 2..].trim_start();
+    } else {
+      return false;
+    }
+  }
+
+  // Skip DOCTYPE: <!DOCTYPE ... >
+  if s.starts_with("<!DOCTYPE") || s.starts_with("<!doctype") {
+    if let Some(end) = s.find('>') {
+      s = s[end + 1..].trim_start();
+    } else {
+      return false;
+    }
+  }
+
+  s.starts_with("<svg")
 }
 
 #[cfg(feature = "svg")]
@@ -157,4 +184,50 @@ pub enum ImageResourceError {
   /// An error occurred while resizing the image
   #[error("An error occurred while resizing the image: {0}")]
   ResizeError(#[from] fast_image_resize::ResizeError),
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn is_svg_bare() {
+    assert!(is_svg(
+      r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"></svg>"#
+    ));
+  }
+
+  #[test]
+  fn is_svg_with_xml_declaration() {
+    assert!(is_svg(
+      r#"<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"></svg>"#
+    ));
+  }
+
+  #[test]
+  fn is_svg_with_xml_and_doctype() {
+    assert!(is_svg(
+      r#"<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1500 2097">
+</svg>"#
+    ));
+  }
+
+  #[test]
+  fn is_svg_with_leading_whitespace() {
+    assert!(is_svg(
+      r#"
+  <?xml version="1.0"?>
+  <!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+  <svg xmlns="http://www.w3.org/2000/svg"></svg>"#
+    ));
+  }
+
+  #[test]
+  fn is_svg_rejects_non_svg() {
+    assert!(!is_svg("<html><body></body></html>"));
+    assert!(!is_svg("not svg at all"));
+    assert!(!is_svg("<?xml version=\"1.0\"?><html></html>"));
+  }
 }
