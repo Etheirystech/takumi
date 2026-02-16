@@ -271,6 +271,7 @@ fn clip_path_inset_round_clips_children() {
       StyleBuilder::default()
         .width(Percentage(100.0))
         .height(Percentage(100.0))
+        .background_color(ColorInput::Value(Color::white()))
         .build()
         .unwrap(),
     ),
