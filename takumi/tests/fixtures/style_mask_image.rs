@@ -188,3 +188,17 @@ fn test_style_mask_image_corner_fade() {
 
   run_fixture_test(container.into(), "style_mask_image_corner_fade");
 }
+
+/// Test SVG data URI mask with XML declaration + DOCTYPE preamble.
+/// The SVG draws a circle (opaque) on a transparent canvas.
+/// Only the circle area should show the red background.
+#[test]
+fn test_style_mask_image_svg_data_uri() {
+  // Base64 of: <?xml version="1.0" ...?><!DOCTYPE svg ...><svg xmlns="..." viewBox="0 0 200 200"><circle cx="100" cy="100" r="80" fill="black"/></svg>
+  let data_uri = "url(data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhRE9DVFlQRSBzdmcgUFVCTElDICItLy9XM0MvL0RURCBTVkcgMS4xLy9FTiIgImh0dHA6Ly93d3cudzMub3JnL0dyYXBoaWNzL1NWRy8xLjEvRFREL3N2ZzExLmR0ZCI+CjxzdmcgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMjAwIDIwMCI+CiAgPGNpcmNsZSBjeD0iMTAwIiBjeT0iMTAwIiByPSI4MCIgZmlsbD0iYmxhY2siLz4KPC9zdmc+)";
+  let mask_image = BackgroundImages::from_str(data_uri).unwrap();
+
+  let container = create_container_with_mask(mask_image, Color([255, 0, 0, 255]));
+
+  run_fixture_test(container.into(), "style_mask_image_svg_data_uri");
+}
