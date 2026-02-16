@@ -65,15 +65,14 @@ impl GenericImageView for ConicGradientTile {
     // atan2 gives angle from positive X axis, counter-clockwise.
     // CSS conic gradients start from top (negative Y axis) and go clockwise.
     // Convert: css_angle = atan2(dx, -dy) (measured from top, clockwise)
-    let angle_from_top = dx.atan2(-dy); // range [-π, π]
+    let angle_from_top = libm::atan2f(dx, -dy); // range [-π, π]
 
     // Subtract start angle and normalize to [0, 2π)
     let adjusted = (angle_from_top - self.start_rad).rem_euclid(TAU);
 
-    // Quantize angle before LUT mapping to reduce tiny libm/arch differences near bin boundaries.
-    let quantized = (((adjusted / TAU) * 65_536.0).round() / 65_536.0).fract();
+    let normalized = adjusted / TAU;
     let lut_idx =
-      ((quantized * self.color_lut.len() as f32).floor() as usize).min(self.color_lut.len() - 1);
+      ((normalized * self.color_lut.len() as f32).floor() as usize).min(self.color_lut.len() - 1);
 
     self.color_lut[lut_idx]
   }

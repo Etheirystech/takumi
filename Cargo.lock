@@ -2305,6 +2305,7 @@ dependencies = [
  "fast_image_resize",
  "image",
  "image-webp",
+ "libm",
  "parley",
  "phf",
  "png",
