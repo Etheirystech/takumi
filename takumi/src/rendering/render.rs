@@ -20,7 +20,9 @@ use crate::{
   },
   rendering::{
     BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, RenderContext, Sizing,
-    draw_debug_border, inline_drawing::fix_inline_box_y, overlay_image,
+    draw_debug_border,
+    inline_drawing::{fix_inline_box_y, render_abs_pos_children},
+    overlay_image,
   },
   resources::image::ImageSource,
 };
@@ -187,7 +189,7 @@ fn collect_measure_result<'g, Nodes: Node<Nodes>>(
             });
           }
           PositionedLayoutItem::InlineBox(mut positioned_box) => {
-            fix_inline_box_y(&mut positioned_box.y, line.metrics());
+            fix_inline_box_y(&mut positioned_box.y, line.metrics(), positioned_box.height);
 
             let inline_transform =
               Affine::translation(positioned_box.x, positioned_box.y) * local_transform;
@@ -247,7 +249,7 @@ pub fn render<'g, N: Node<N>>(options: RenderOptions<'g, N>) -> Result<RgbaImage
   Ok(canvas.into_inner())
 }
 
-fn apply_transform(
+pub(crate) fn apply_transform(
   transform: &mut Affine,
   style: &InheritedStyle,
   border_box: Size<f32>,
@@ -393,6 +395,12 @@ fn render_node<'g, Nodes: Node<Nodes>>(
   }
 
   if should_create_inline {
+    // Render abs-pos children first so they appear behind in-flow text
+    // (they serve as background layers, e.g., trigger badge trapezoid).
+    if let Some(abs_children) = &node.abs_pos_children {
+      render_abs_pos_children(abs_children, &node.context, canvas, layout)?;
+    }
+
     node.draw_inline(canvas, layout)?;
   } else {
     // Drop the node context reference so we can borrow taffy again
