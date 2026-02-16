@@ -1225,7 +1225,7 @@ mod tests {
       "font-bold",
       "font-stretch-condensed",
       "font-stretch-ultra-expanded",
-      "font-stretch-75",
+      "font-stretch-75%",
       "uppercase",
       "tracking-wide",
       // Flexbox
