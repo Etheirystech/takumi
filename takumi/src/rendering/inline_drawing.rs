@@ -1,4 +1,4 @@
-use image::{GenericImageView, Rgba};
+use image::{GenericImageView, Rgba, RgbaImage};
 use parley::style::FontWeight as ParleyFontWeight;
 use parley::{FontWidth, GlyphRun, LineMetrics, PositionedInlineBox, PositionedLayoutItem};
 use swash::FontRef;
@@ -15,9 +15,9 @@ use crate::{
     style::{Affine, BackgroundClip, Overflow, SizedFontStyle, TextDecorationLine},
   },
   rendering::{
-    BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, DrawPhase, MaxHeight,
-    RenderContext, apply_transform, collect_background_layers, draw_decoration, draw_glyph,
-    draw_glyph_clip_image, rasterize_layers,
+    BackgroundTile, BorderProperties, Canvas, CanvasConstrain, CanvasConstrainResult, DrawPhase,
+    MaxHeight, RenderContext, TextClipBackground, apply_transform, collect_background_layers,
+    draw_decoration, draw_glyph, draw_glyph_clip_image, rasterize_layers,
   },
   resources::font::FontError,
 };
@@ -505,9 +505,13 @@ pub(crate) fn draw_inline_layout(
   inline_layout: InlineLayout,
   font_style: &SizedFontStyle,
 ) -> Result<Vec<PositionedInlineBox>> {
-  // Extend the clip image by the stroke width so that text stroke extending
-  // beyond the element's border box is still covered by the clip image.
+  // clip_offset: extra offset to add when sampling the clip image.
+  // Non-zero when the clip image comes from an ancestor and includes area
+  // before the child's origin (to accommodate text stroke overflow).
   let (clip_image, clip_offset) = if context.style.background_clip == BackgroundClip::Text {
+    // Local background-clip: text — rasterize this element's own background.
+    // Extend the clip image by the stroke width so that text stroke extending
+    // beyond the element's border box is still covered by the clip image.
     let margin = font_style.stroke_width.max(0.0).ceil();
     // When text overflows the layout box (e.g., whiteSpace: nowrap with long text
     // and a scaleX transform), the clip image must cover the full text extent,
@@ -535,6 +539,16 @@ pub(crate) fn draw_inline_layout(
         y: margin,
       },
     )
+  } else if !canvas.text_clip_backgrounds.is_empty() {
+    // Ancestor has background-clip: text — create a cropped view of the ancestor's background
+    match create_ancestor_clip_crop(
+      canvas.text_clip_backgrounds.last().unwrap(),
+      context,
+      layout,
+    ) {
+      Some((image, offset)) => (Some(BackgroundTile::Image(image)), offset),
+      None => (None, Point::ZERO),
+    }
   } else {
     (None, Point::ZERO)
   };
@@ -568,10 +582,21 @@ pub(crate) fn draw_inline_layout(
     next_nonzero_line_top[idx] = next_top.unwrap_or(top);
   }
 
+  // Determine which phases to run. When the canvas has a text_draw_phase set
+  // (from an ancestor with background-clip: text doing two-pass child rendering),
+  // only execute that single phase. Otherwise do both phases locally.
+  let phases: &[DrawPhase] = match canvas.text_draw_phase {
+    Some(phase) => match phase {
+      DrawPhase::Stroke => &[DrawPhase::Stroke],
+      DrawPhase::Fill => &[DrawPhase::Fill],
+    },
+    None => &[DrawPhase::Stroke, DrawPhase::Fill],
+  };
+
   // Two-phase rendering across ALL glyph runs: draw all strokes first, then
   // all fills. This matches CSS painting order where text-stroke renders behind
   // text fill, preventing a later run's stroke from covering an earlier run's fill.
-  for &phase in &[DrawPhase::Stroke, DrawPhase::Fill] {
+  for &phase in phases {
     for (line_idx, line) in lines.iter().enumerate() {
       for item in line.items() {
         match item {
@@ -589,7 +614,7 @@ pub(crate) fn draw_inline_layout(
           }
           PositionedLayoutItem::InlineBox(mut inline_box) => {
             // Collect inline boxes only once (during first phase)
-            if phase == DrawPhase::Stroke {
+            if phase == phases[0] {
               let metrics = line.metrics();
               if inline_box.height < 0.5 {
                 // Metric-neutral wrapper lines can be generated without glyphs;
@@ -623,6 +648,75 @@ pub(crate) fn fix_inline_box_y(y: &mut f32, metrics: &LineMetrics, inline_box_he
   }
 
   *y += metrics.line_height - metrics.baseline;
+}
+
+#[cfg(test)]
+mod tests {
+  use parley::LineMetrics;
+
+  use super::{fix_inline_box_y, metric_neutral_y_offset};
+
+  #[test]
+  fn fix_inline_box_y_skips_metric_neutral_boxes() {
+    let metrics = LineMetrics {
+      ascent: 36.0,
+      line_height: 88.0,
+      baseline: 74.0,
+      ..LineMetrics::default()
+    };
+    let mut y = 74.0;
+
+    fix_inline_box_y(&mut y, &metrics, 0.0);
+
+    assert_eq!(y, 38.0);
+  }
+
+  #[test]
+  fn fix_inline_box_y_applies_to_regular_boxes() {
+    let metrics = LineMetrics {
+      line_height: 88.0,
+      baseline: 74.0,
+      ..LineMetrics::default()
+    };
+    let mut y = 54.0;
+
+    fix_inline_box_y(&mut y, &metrics, 20.0);
+
+    assert_eq!(y, 68.0);
+  }
+
+  #[test]
+  fn metric_neutral_offset_uses_actual_minus_parley_height() {
+    assert_eq!(metric_neutral_y_offset(50.0, 0.0), 0.0);
+    assert_eq!(metric_neutral_y_offset(20.0, 20.0), 0.0);
+  }
+}
+
+/// Creates a cropped `RgbaImage` from an ancestor's text clip background.
+///
+/// Maps the current element's position into the ancestor's coordinate space to
+/// determine the crop offset, then copies the relevant rectangle.
+///
+/// Returns `(image, offset)` where `offset` is the child's origin within the
+/// cropped image. Callers must add this offset to sampling coordinates to
+/// correctly map child-local positions to clip image positions.
+fn create_ancestor_clip_crop(
+  ancestor_clip: &TextClipBackground,
+  context: &RenderContext,
+  _layout: Layout,
+) -> Option<(RgbaImage, Point<f32>)> {
+  let ancestor_inv = ancestor_clip.transform.invert()?;
+
+  // Compute the child's border-box origin in the ancestor's coordinate space.
+  let child_origin = (ancestor_inv * context.transform).transform_point(Point::ZERO);
+
+  // The child's origin within the full ancestor image.
+  let offset = Point {
+    x: child_origin.x.max(0.0),
+    y: child_origin.y.max(0.0),
+  };
+
+  Some((ancestor_clip.image.clone(), offset))
 }
 
 /// Computes the faux-bold stroke width for a given font and style.
@@ -674,46 +768,4 @@ fn compute_faux_stretch_factor(font: FontRef, _style: &SizedFontStyle) -> f32 {
   }
 
   ratio
-}
-
-#[cfg(test)]
-mod tests {
-  use parley::LineMetrics;
-
-  use super::{fix_inline_box_y, metric_neutral_y_offset};
-
-  #[test]
-  fn fix_inline_box_y_skips_metric_neutral_boxes() {
-    let metrics = LineMetrics {
-      ascent: 36.0,
-      line_height: 88.0,
-      baseline: 74.0,
-      ..LineMetrics::default()
-    };
-    let mut y = 74.0;
-
-    fix_inline_box_y(&mut y, &metrics, 0.0);
-
-    assert_eq!(y, 38.0);
-  }
-
-  #[test]
-  fn fix_inline_box_y_applies_to_regular_boxes() {
-    let metrics = LineMetrics {
-      line_height: 88.0,
-      baseline: 74.0,
-      ..LineMetrics::default()
-    };
-    let mut y = 54.0;
-
-    fix_inline_box_y(&mut y, &metrics, 20.0);
-
-    assert_eq!(y, 68.0);
-  }
-
-  #[test]
-  fn metric_neutral_offset_uses_actual_minus_parley_height() {
-    assert_eq!(metric_neutral_y_offset(50.0, 0.0), 0.0);
-    assert_eq!(metric_neutral_y_offset(20.0, 20.0), 0.0);
-  }
 }

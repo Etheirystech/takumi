@@ -103,6 +103,26 @@ impl GenericImageView for BackgroundTile {
   }
 }
 
+impl BackgroundTile {
+  /// Convert into an owned `RgbaImage`.
+  /// For non-Image variants, rasterizes the tile into an image.
+  pub(crate) fn into_image(self) -> RgbaImage {
+    match self {
+      BackgroundTile::Image(img) => img,
+      other => {
+        let (w, h) = other.dimensions();
+        let mut img = RgbaImage::new(w, h);
+        for y in 0..h {
+          for x in 0..w {
+            img.put_pixel(x, y, other.get_pixel(x, y));
+          }
+        }
+        img
+      }
+    }
+  }
+}
+
 pub(crate) fn resolve_length_against_area(unit: Length, area: u32, sizing: &Sizing) -> u32 {
   match unit {
     Length::Auto => area,

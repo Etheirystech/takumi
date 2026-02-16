@@ -238,7 +238,9 @@ pub(crate) fn create_inline_layout<'c, 'g: 'c, N: Node<N> + 'c>(
 
           // When the inline-block has line-height: 0, report height as 0 to parley
           // so it doesn't inflate the parent's line height. This lets the parent's
-          // CSS line-height be the sole controller of row spacing.
+          // CSS line-height be the sole controller of row spacing (e.g. ability
+          // badge inline-blocks inside card text). Rendering always uses the actual
+          // height from InlineBoxItem, not parley's InlineBox.
           let resolved_line_height = context.style.line_height.into_parley(&context.sizing);
           let parley_height = if is_abs_pos {
             0.0

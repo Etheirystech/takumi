@@ -123,6 +123,12 @@ impl<Nodes: Node<Nodes>> Node<Nodes> for ImageNode {
     canvas: &mut Canvas,
     layout: Layout,
   ) -> Result<()> {
+    // Skip image drawing during text draw phases to prevent double compositing
+    // when parent has background-clip: text (two-pass stroke/fill rendering).
+    if canvas.text_draw_phase.is_some() {
+      return Ok(());
+    }
+
     let Ok(image) = resolve_image(&self.src, context) else {
       return Ok(());
     };

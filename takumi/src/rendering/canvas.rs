@@ -397,6 +397,15 @@ impl MaskMemory {
   }
 }
 
+/// Stores a rasterized background from an ancestor element that has `background-clip: text`.
+/// Descendant inline layouts use this to clip their text to the ancestor's background.
+pub(crate) struct TextClipBackground {
+  pub(crate) image: RgbaImage,
+  /// The transform of the ancestor element that owns this background.
+  /// Used to compute the descendant's offset within the ancestor for correct sampling.
+  pub(crate) transform: Affine,
+}
+
 /// A canvas that can be used to draw images onto.
 pub struct Canvas {
   pub(crate) image: RgbaImage,
@@ -404,6 +413,12 @@ pub struct Canvas {
   // Since canvas is shared with mutable borrows everywhere already,
   // we can just include the memory here instead of making the function argument bloated.
   pub(crate) mask_memory: MaskMemory,
+  /// Stack of ancestor text clip backgrounds for `background-clip: text` on non-inline containers.
+  pub(crate) text_clip_backgrounds: SmallVec<[TextClipBackground; 1]>,
+  /// When set, restricts inline text drawing to the given phase.
+  /// Used by containers with `background-clip: text` to render all children's
+  /// strokes before any fills, matching CSS painting order.
+  pub(crate) text_draw_phase: Option<super::DrawPhase>,
 }
 
 impl Canvas {
@@ -413,6 +428,8 @@ impl Canvas {
       image: RgbaImage::new(size.width, size.height),
       constrains: SmallVec::new(),
       mask_memory: MaskMemory::default(),
+      text_clip_backgrounds: SmallVec::new(),
+      text_draw_phase: None,
     }
   }
 
@@ -428,6 +445,14 @@ impl Canvas {
 
   pub(crate) fn pop_constrain(&mut self) {
     self.constrains.pop();
+  }
+
+  pub(crate) fn push_text_clip_background(&mut self, clip: TextClipBackground) {
+    self.text_clip_backgrounds.push(clip);
+  }
+
+  pub(crate) fn pop_text_clip_background(&mut self) {
+    self.text_clip_backgrounds.pop();
   }
 
   pub(crate) fn into_inner(self) -> RgbaImage {
