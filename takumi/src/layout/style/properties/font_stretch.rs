@@ -63,7 +63,10 @@ impl TailwindPropertyParser for FontStretch {
       "expanded" => Some(Self(FontWidth::EXPANDED)),
       "extra-expanded" => Some(Self(FontWidth::EXTRA_EXPANDED)),
       "ultra-expanded" => Some(Self(FontWidth::ULTRA_EXPANDED)),
-      _ => None,
+      _ => {
+        let value = token.parse::<f32>().ok()?;
+        Some(Self(FontWidth::from_percentage(value)))
+      },
     }
   }
 }
@@ -112,5 +115,17 @@ mod tests {
       Some(FontStretch(FontWidth::ULTRA_EXPANDED))
     );
     assert_eq!(FontStretch::parse_tw("invalid"), None);
+  }
+
+  #[test]
+  fn test_tailwind_parser_percentage() {
+    assert_eq!(
+      FontStretch::parse_tw("75"),
+      Some(FontStretch(FontWidth::CONDENSED))
+    );
+    assert_eq!(
+      FontStretch::parse_tw("150"),
+      Some(FontStretch(FontWidth::EXTRA_EXPANDED))
+    );
   }
 }
