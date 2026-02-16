@@ -72,6 +72,8 @@ pub use line_clamp::*;
 pub use line_height::*;
 pub use linear_gradient::*;
 pub use noise_v1::*;
+/// CSS outline shorthand — structurally identical to `Border` (width / style / color).
+pub type Outline = Border;
 pub use overflow::*;
 pub use overflow_wrap::*;
 pub use percentage_number::*;
