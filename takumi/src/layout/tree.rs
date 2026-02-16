@@ -34,6 +34,7 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
     node.draw_background(&self.context, canvas, layout)?;
     node.draw_inset_box_shadow(&self.context, canvas, layout)?;
     node.draw_border(&self.context, canvas, layout)?;
+    node.draw_outline(&self.context, canvas, layout)?;
     Ok(())
   }
 
