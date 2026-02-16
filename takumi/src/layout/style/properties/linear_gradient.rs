@@ -1,6 +1,5 @@
 use cssparser::{Parser, Token};
 use image::{GenericImageView, Rgba};
-use smallvec::SmallVec;
 use std::ops::{Deref, Neg};
 
 use super::gradient_utils::{adaptive_lut_size, build_color_lut, resolve_stops_along_axis};
@@ -55,7 +54,7 @@ impl GenericImageView for LinearGradientTile {
 
 /// Precomputed drawing context for repeated sampling of a `LinearGradient`.
 #[derive(Debug, Clone)]
-pub struct LinearGradientTile {
+pub(crate) struct LinearGradientTile {
   /// Target width in pixels.
   pub width: u32,
   /// Target height in pixels.
@@ -72,8 +71,6 @@ pub struct LinearGradientTile {
   pub max_extent: f32,
   /// Full axis length along gradient direction in pixels.
   pub axis_length: f32,
-  /// Resolved and ordered color stops (positions in pixels).
-  pub resolved_stops: SmallVec<[ResolvedGradientStop; 4]>,
   /// Pre-computed color lookup table for fast gradient sampling.
   /// Maps normalized position [0.0, 1.0] to color.
   pub color_lut: Box<[Rgba<u8>]>,
@@ -105,7 +102,6 @@ impl LinearGradientTile {
       cy,
       max_extent,
       axis_length,
-      resolved_stops,
       color_lut,
     }
   }
@@ -128,6 +124,27 @@ pub enum GradientStop {
   },
   /// A numeric gradient stop.
   Hint(StopPosition),
+}
+
+/// A list of gradient color stops, handling CSS double-stop syntax.
+pub type GradientStops = Vec<GradientStop>;
+
+impl<'i> FromCss<'i> for GradientStops {
+  fn valid_tokens() -> &'static [CssToken] {
+    GradientStop::valid_tokens()
+  }
+
+  fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
+    let mut stops = Vec::new();
+
+    stops.push(GradientStop::from_css(input)?);
+
+    while input.try_parse(Parser::expect_comma).is_ok() {
+      stops.push(GradientStop::from_css(input)?);
+    }
+
+    Ok(stops)
+  }
 }
 
 /// Represents a resolved gradient stop with a position.
@@ -302,17 +319,9 @@ impl<'i> FromCss<'i> for LinearGradient {
         Angle::new(180.0)
       };
 
-      let mut stops = Vec::new();
-
-      stops.push(GradientStop::from_css(input)?);
-
-      while input.try_parse(Parser::expect_comma).is_ok() {
-        stops.push(GradientStop::from_css(input)?);
-      }
-
       Ok(LinearGradient {
         angle,
-        stops: stops.into_boxed_slice(),
+        stops: GradientStops::from_css(input)?.into_boxed_slice(),
       })
     })
   }

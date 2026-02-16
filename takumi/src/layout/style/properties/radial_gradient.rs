@@ -1,11 +1,10 @@
 use cssparser::Parser;
 use image::{GenericImageView, Rgba};
-use smallvec::SmallVec;
 
 use super::gradient_utils::{adaptive_lut_size, build_color_lut, resolve_stops_along_axis};
 use crate::{
   layout::style::{
-    BackgroundPosition, CssToken, FromCss, GradientStop, Length, ParseResult, ResolvedGradientStop,
+    BackgroundPosition, CssToken, FromCss, GradientStop, GradientStops, Length, ParseResult,
     declare_enum_from_css_impl,
   },
   rendering::RenderContext,
@@ -64,7 +63,7 @@ declare_enum_from_css_impl!(
 
 /// Precomputed drawing context for repeated sampling of a `RadialGradient`.
 #[derive(Debug, Clone)]
-pub struct RadialGradientTile {
+pub(crate) struct RadialGradientTile {
   /// Target width in pixels.
   pub width: u32,
   /// Target height in pixels.
@@ -77,10 +76,6 @@ pub struct RadialGradientTile {
   pub radius_x: f32,
   /// Radius Y in pixels (for circle, equals radius_x)
   pub radius_y: f32,
-  /// Scale component used for stop resolution.
-  pub radius_scale: f32,
-  /// Resolved and ordered color stops.
-  pub resolved_stops: SmallVec<[ResolvedGradientStop; 4]>,
   /// Pre-computed color lookup table for fast gradient sampling.
   /// Maps normalized distance [0.0, 1.0] from center to color.
   pub color_lut: Box<[Rgba<u8>]>,
@@ -195,8 +190,6 @@ impl RadialGradientTile {
       cy,
       radius_x,
       radius_y,
-      radius_scale,
-      resolved_stops,
       color_lut,
     }
   }
@@ -232,14 +225,7 @@ impl<'i> FromCss<'i> for RadialGradient {
         break;
       }
 
-      // Parse at least one stop, comma-separated
-      let mut stops = Vec::new();
-
-      stops.push(GradientStop::from_css(input)?);
-
-      while input.try_parse(Parser::expect_comma).is_ok() {
-        stops.push(GradientStop::from_css(input)?);
-      }
+      let stops = GradientStops::from_css(input)?;
 
       Ok(RadialGradient {
         shape,
