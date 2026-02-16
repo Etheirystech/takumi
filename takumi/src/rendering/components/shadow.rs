@@ -130,7 +130,7 @@ impl SizedShadow {
     &self,
     canvas: &mut RgbaImage,
     mask_memory: &mut MaskMemory,
-    constrain: Option<&CanvasConstrain>,
+    constrains: &[CanvasConstrain],
     shadow_paths: &[Command],
     element_border_radius: BorderProperties,
     element_size: Size<f32>,
@@ -166,7 +166,7 @@ impl SizedShadow {
       },
       self.color,
       BlendMode::Normal,
-      None,
+      &[],
     );
 
     // 3. Apply blur if needed.
@@ -215,7 +215,7 @@ impl SizedShadow {
       Affine::translation(img_origin_x, img_origin_y),
       ImageScalingAlgorithm::Auto,
       BlendMode::Normal,
-      constrain,
+      constrains,
       mask_memory,
     );
   }

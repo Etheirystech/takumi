@@ -550,7 +550,7 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
         height: placement.height,
       },
       BlendMode::Normal,
-      canvas.constrains.last(),
+      &canvas.constrains,
       |x, y| {
         let alpha = mask[mask_index_from_coord(x, y, placement.width)];
         let mut pixel: ::image::Rgba<u8> = resolved_color.into();
