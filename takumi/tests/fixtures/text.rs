@@ -161,7 +161,7 @@ fn text_typography_line_height_40px() {
       StyleBuilder::default()
         .background_color(ColorInput::Value(Color([240, 240, 240, 255])))
         .font_size(Some(Px(24.0)))
-        .line_height(LineHeight(Px(40.0)))
+        .line_height(LineHeight(Some(Px(40.0))))
         .build()
         .unwrap(),
     ),
