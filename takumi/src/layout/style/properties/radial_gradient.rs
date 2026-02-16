@@ -2,7 +2,9 @@ use cssparser::Parser;
 use image::{GenericImageView, Rgba};
 use smallvec::SmallVec;
 
-use super::gradient_utils::{adaptive_lut_size, build_color_lut, resolve_stops_along_axis};
+use super::gradient_utils::{
+  adaptive_lut_size, build_color_lut, parse_gradient_stops, resolve_stops_along_axis,
+};
 use crate::{
   layout::style::{
     BackgroundPosition, CssToken, FromCss, GradientStop, Length, ParseResult, ResolvedGradientStop,
@@ -232,14 +234,8 @@ impl<'i> FromCss<'i> for RadialGradient {
         break;
       }
 
-      // Parse at least one stop, comma-separated
-      let mut stops = Vec::new();
-
-      stops.push(GradientStop::from_css(input)?);
-
-      while input.try_parse(Parser::expect_comma).is_ok() {
-        stops.push(GradientStop::from_css(input)?);
-      }
+      // Parse color stops (with double-stop expansion)
+      let stops = parse_gradient_stops(input)?;
 
       Ok(RadialGradient {
         shape,
