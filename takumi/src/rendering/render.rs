@@ -168,7 +168,36 @@ fn collect_measure_result<'g, Nodes: Node<Nodes>>(
       InlineLayoutStage::Measure,
     );
 
-    for line in inline_layout.lines() {
+    let lines = inline_layout.lines().collect::<Vec<_>>();
+    let mut next_nonzero_line_top = vec![0.0_f32; lines.len()];
+    let mut line_text_top = vec![0.0_f32; lines.len()];
+    let mut line_has_glyph = vec![false; lines.len()];
+    let mut next_top: Option<f32> = None;
+
+    for (idx, line) in lines.iter().enumerate() {
+      let mut top_from_glyph: Option<f32> = None;
+      for item in line.items() {
+        if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+          top_from_glyph = Some(glyph_run.baseline() - glyph_run.run().metrics().ascent);
+          break;
+        }
+      }
+
+      line_has_glyph[idx] = top_from_glyph.is_some();
+      line_text_top[idx] =
+        top_from_glyph.unwrap_or(line.metrics().baseline - line.metrics().ascent);
+    }
+
+    for (idx, line) in lines.iter().enumerate().rev() {
+      let metrics = line.metrics();
+      let top = line_text_top[idx];
+      if metrics.line_height >= 0.5 {
+        next_top = Some(top);
+      }
+      next_nonzero_line_top[idx] = next_top.unwrap_or(top);
+    }
+
+    for (line_idx, line) in lines.iter().enumerate() {
       for item in line.items() {
         match item {
           PositionedLayoutItem::GlyphRun(glyph_run) => {
@@ -187,7 +216,16 @@ fn collect_measure_result<'g, Nodes: Node<Nodes>>(
             });
           }
           PositionedLayoutItem::InlineBox(mut positioned_box) => {
-            fix_inline_box_y(&mut positioned_box.y, line.metrics());
+            let metrics = line.metrics();
+            if positioned_box.height < 0.5 {
+              positioned_box.y = if line_has_glyph[line_idx] {
+                line_text_top[line_idx]
+              } else {
+                next_nonzero_line_top[line_idx]
+              };
+            } else {
+              fix_inline_box_y(&mut positioned_box.y, metrics, positioned_box.height);
+            }
 
             let inline_transform =
               Affine::translation(positioned_box.x, positioned_box.y) * local_transform;
@@ -247,7 +285,7 @@ pub fn render<'g, N: Node<N>>(options: RenderOptions<'g, N>) -> Result<RgbaImage
   Ok(canvas.into_inner())
 }
 
-fn apply_transform(
+pub(crate) fn apply_transform(
   transform: &mut Affine,
   style: &InheritedStyle,
   border_box: Size<f32>,
