@@ -1,7 +1,7 @@
 use cssparser::{Parser, Token, match_ignore_ascii_case};
 use parley::FontWidth;
 
-use crate::layout::style::{CssToken, FromCss, ParseResult};
+use crate::layout::style::{CssToken, FromCss, ParseResult, tw::TailwindPropertyParser};
 
 /// Controls the width/stretch of text rendering.
 ///
@@ -51,8 +51,66 @@ impl<'i> FromCss<'i> for FontStretch {
   }
 }
 
+impl TailwindPropertyParser for FontStretch {
+  fn parse_tw(token: &str) -> Option<Self> {
+    match_ignore_ascii_case! {token,
+      "normal" => Some(Self(FontWidth::NORMAL)),
+      "ultra-condensed" => Some(Self(FontWidth::ULTRA_CONDENSED)),
+      "extra-condensed" => Some(Self(FontWidth::EXTRA_CONDENSED)),
+      "condensed" => Some(Self(FontWidth::CONDENSED)),
+      "semi-condensed" => Some(Self(FontWidth::SEMI_CONDENSED)),
+      "semi-expanded" => Some(Self(FontWidth::SEMI_EXPANDED)),
+      "expanded" => Some(Self(FontWidth::EXPANDED)),
+      "extra-expanded" => Some(Self(FontWidth::EXTRA_EXPANDED)),
+      "ultra-expanded" => Some(Self(FontWidth::ULTRA_EXPANDED)),
+      _ => None,
+    }
+  }
+}
+
 impl From<FontStretch> for FontWidth {
   fn from(value: FontStretch) -> Self {
     value.0
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use crate::layout::style::FromCss;
+
+  #[test]
+  fn test_parse_font_stretch_keywords() {
+    assert_eq!(
+      FontStretch::from_str("condensed"),
+      Ok(FontStretch(FontWidth::CONDENSED))
+    );
+    assert_eq!(
+      FontStretch::from_str("expanded"),
+      Ok(FontStretch(FontWidth::EXPANDED))
+    );
+    assert_eq!(
+      FontStretch::from_str("normal"),
+      Ok(FontStretch(FontWidth::NORMAL))
+    );
+  }
+
+  #[test]
+  fn test_parse_font_stretch_percentage() {
+    let result = FontStretch::from_str("75%").unwrap();
+    assert_eq!(FontWidth::from(result), FontWidth::CONDENSED);
+  }
+
+  #[test]
+  fn test_tailwind_parser() {
+    assert_eq!(
+      FontStretch::parse_tw("condensed"),
+      Some(FontStretch(FontWidth::CONDENSED))
+    );
+    assert_eq!(
+      FontStretch::parse_tw("ultra-expanded"),
+      Some(FontStretch(FontWidth::ULTRA_EXPANDED))
+    );
+    assert_eq!(FontStretch::parse_tw("invalid"), None);
   }
 }

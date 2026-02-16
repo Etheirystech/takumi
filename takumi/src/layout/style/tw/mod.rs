@@ -214,6 +214,8 @@ pub enum TailwindProperty {
   FontStyle(FontStyle),
   /// `font-weight` property.
   FontWeight(FontWeight),
+  /// `font-stretch` property.
+  FontStretch(FontStretch),
   /// `font-family` property.
   FontFamily(FontFamily),
   /// `line-clamp` property.
@@ -641,6 +643,9 @@ impl TailwindProperty {
       }
       TailwindProperty::FontWeight(font_weight) => {
         style.font_weight = font_weight.into();
+      }
+      TailwindProperty::FontStretch(font_stretch) => {
+        style.font_stretch = font_stretch.into();
       }
       TailwindProperty::FontFamily(ref font_family) => {
         style.font_family = Some(font_family.clone()).into();
@@ -1218,6 +1223,8 @@ mod tests {
       // Typography
       "text-sm",
       "font-bold",
+      "font-stretch-condensed",
+      "font-stretch-ultra-expanded",
       "uppercase",
       "tracking-wide",
       // Flexbox

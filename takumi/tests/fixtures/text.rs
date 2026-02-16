@@ -800,3 +800,66 @@ fn text_super_bold_stroke_background_clip() {
 
   run_fixture_test(container.into(), "text_super_bold_stroke_background_clip");
 }
+
+#[test]
+fn text_font_stretch() {
+  let stretches = [
+    (
+      "ultra-condensed",
+      FontStretch::from_str("ultra-condensed").unwrap(),
+    ),
+    ("condensed", FontStretch::from_str("condensed").unwrap()),
+    (
+      "semi-condensed",
+      FontStretch::from_str("semi-condensed").unwrap(),
+    ),
+    ("normal", FontStretch::from_str("normal").unwrap()),
+    (
+      "semi-expanded",
+      FontStretch::from_str("semi-expanded").unwrap(),
+    ),
+    ("expanded", FontStretch::from_str("expanded").unwrap()),
+    (
+      "ultra-expanded",
+      FontStretch::from_str("ultra-expanded").unwrap(),
+    ),
+  ];
+
+  let nodes = stretches
+    .iter()
+    .map(|(label, stretch)| {
+      TextNode {
+        preset: None,
+        tw: None,
+        style: Some(
+          StyleBuilder::default()
+            .font_size(Some(Px(36.0)))
+            .font_stretch(*stretch)
+            .build()
+            .unwrap(),
+        ),
+        text: format!("font-stretch: {}", label),
+      }
+      .into()
+    })
+    .collect::<Vec<_>>();
+
+  let container = ContainerNode {
+    preset: None,
+    tw: None,
+    style: Some(
+      StyleBuilder::default()
+        .background_color(ColorInput::Value(Color([240, 240, 240, 255])))
+        .font_family(FontFamily::from_str("Archivo").ok())
+        .width(Percentage(100.0))
+        .flex_direction(FlexDirection::Column)
+        .padding(Sides([Px(20.0); 4]))
+        .gap(SpacePair::from_single(Px(12.0)))
+        .build()
+        .unwrap(),
+    ),
+    children: Some(nodes.into_boxed_slice()),
+  };
+
+  run_fixture_test(container.into(), "text_font_stretch");
+}
