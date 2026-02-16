@@ -39,6 +39,12 @@ pub enum PositionComponent {
   Length(Length),
 }
 
+impl From<Length> for PositionComponent {
+  fn from(value: Length) -> Self {
+    PositionComponent::Length(value)
+  }
+}
+
 impl From<PositionComponent> for Length {
   fn from(component: PositionComponent) -> Self {
     match component {
@@ -149,7 +155,7 @@ impl<'i> FromCss<'i> for BackgroundPosition {
 impl<'i> FromCss<'i> for PositionComponent {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
     if let Ok(v) = input.try_parse(Length::from_css) {
-      return Ok(PositionComponent::Length(v));
+      return Ok(v.into());
     }
 
     let location = input.current_source_location();

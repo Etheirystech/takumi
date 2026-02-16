@@ -157,9 +157,8 @@ impl RadialGradientTile {
         let r = dx_left.min(dx_right).min(dy_top.min(dy_bottom));
         (r, r)
       }
-      // For corner sizes, use farthest-corner as sensible default
       (RadialShape::Ellipse, RadialSize::ClosestCorner) => {
-        (dx_left.max(dx_right), dy_top.max(dy_bottom))
+        (dx_left.min(dx_right), dy_top.min(dy_bottom))
       }
       (RadialShape::Circle, RadialSize::ClosestCorner) => {
         let candidates = [
@@ -340,8 +339,8 @@ mod tests {
         shape: RadialShape::Ellipse,
         size: RadialSize::FarthestCorner,
         center: BackgroundPosition(SpacePair::from_pair(
-          PositionComponent::Length(Length::Percentage(25.0)),
-          PositionComponent::Length(Length::Percentage(70.0)),
+          Length::Percentage(25.0).into(),
+          Length::Percentage(70.0).into(),
         )),
         stops: [
           GradientStop::ColorHint {
