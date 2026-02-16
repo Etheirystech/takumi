@@ -1,11 +1,8 @@
-use cssparser::Parser;
 use image::Rgba;
 use smallvec::SmallVec;
 use wide::f32x4;
 
-use super::{
-  Color, CssToken, FromCss, GradientStop, ParseResult, ResolvedGradientStop, StopPosition,
-};
+use super::{Color, GradientStop, ResolvedGradientStop};
 use crate::rendering::RenderContext;
 
 /// Interpolates between two colors in RGBA space, if t is 0.0 or 1.0, returns the first or second color.
@@ -254,55 +251,6 @@ pub(crate) fn resolve_stops_along_axis(
   }
 
   resolved
-}
-
-/// A list of gradient color stops, handling CSS double-stop syntax.
-/// CSS allows `color pos1 pos2` as shorthand for `color pos1, color pos2`.
-pub(crate) struct GradientStops(pub Vec<GradientStop>);
-
-impl<'i> FromCss<'i> for GradientStops {
-  fn valid_tokens() -> &'static [CssToken] {
-    GradientStop::valid_tokens()
-  }
-
-  fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
-    let mut stops = Vec::new();
-
-    push_stop_expanding_double(input, &mut stops)?;
-
-    while input.try_parse(Parser::expect_comma).is_ok() {
-      push_stop_expanding_double(input, &mut stops)?;
-    }
-
-    Ok(Self(stops))
-  }
-}
-
-fn push_stop_expanding_double<'i>(
-  input: &mut Parser<'i, '_>,
-  stops: &mut Vec<GradientStop>,
-) -> ParseResult<'i, ()> {
-  let stop = GradientStop::from_css(input)?;
-
-  // Check for CSS double-stop syntax: `color pos1 pos2` → two stops
-  if let GradientStop::ColorHint { hint: Some(_), .. } = &stop
-    && let Ok(pos2) = input.try_parse(StopPosition::from_css)
-  {
-    // Extract the color before pushing (ColorInput is Copy)
-    let color = match &stop {
-      GradientStop::ColorHint { color, .. } => *color,
-      _ => unreachable!(),
-    };
-    stops.push(stop);
-    stops.push(GradientStop::ColorHint {
-      color,
-      hint: Some(pos2),
-    });
-    return Ok(());
-  }
-
-  stops.push(stop);
-  Ok(())
 }
 
 #[cfg(test)]

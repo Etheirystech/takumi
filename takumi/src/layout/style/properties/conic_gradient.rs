@@ -1,13 +1,12 @@
+use std::f32::consts::TAU;
+
 use cssparser::Parser;
 use image::{GenericImageView, Rgba};
-use smallvec::SmallVec;
 
-use super::gradient_utils::{
-  GradientStops, adaptive_lut_size, build_color_lut, resolve_stops_along_axis,
-};
+use super::gradient_utils::{adaptive_lut_size, build_color_lut, resolve_stops_along_axis};
 use crate::{
   layout::style::{
-    Angle, BackgroundPosition, CssToken, FromCss, GradientStop, ParseResult, ResolvedGradientStop,
+    Angle, BackgroundPosition, CssToken, FromCss, GradientStop, GradientStops, ParseResult,
   },
   rendering::RenderContext,
 };
@@ -23,9 +22,9 @@ pub struct ConicGradient {
   pub stops: Box<[GradientStop]>,
 }
 
-/// Precomputed drawing context for repeated sampling of a `ConicGradient`.
+/// Precomputed data for repeated sampling of a `ConicGradient`.
 #[derive(Debug, Clone)]
-pub struct ConicGradientTile {
+pub(crate) struct ConicGradientTile {
   /// Target width in pixels.
   pub width: u32,
   /// Target height in pixels.
@@ -36,8 +35,6 @@ pub struct ConicGradientTile {
   pub cy: f32,
   /// Starting angle in radians (CSS 0deg = from top, clockwise).
   pub start_rad: f32,
-  /// Resolved and ordered color stops.
-  pub resolved_stops: SmallVec<[ResolvedGradientStop; 4]>,
   /// Pre-computed color lookup table for fast gradient sampling.
   /// Maps normalized angle [0.0, 1.0] (fraction of full turn) to color.
   pub color_lut: Box<[Rgba<u8>]>,
@@ -89,16 +86,27 @@ impl ConicGradientTile {
     let cy = Length::from(gradient.center.0.y).to_px(&context.sizing, height as f32);
 
     let start_rad = gradient.from_angle.to_radians();
+    let axis_degrees = 360.0;
 
-    // For conic gradients, the "axis" is a full turn (360deg = 100%).
-    // We resolve stops along a virtual axis of length 360.0 (degrees),
-    // so percentage stops map 0%→0deg, 100%→360deg.
-    let axis_length = 360.0_f32;
-    let resolved_stops = resolve_stops_along_axis(&gradient.stops, axis_length.max(1e-6), context);
+    // Resolve stop percentages against one full turn (360deg).
+    let resolved_stops = resolve_stops_along_axis(&gradient.stops, axis_degrees, context);
 
-    // Use a high-resolution LUT for smooth angular sampling
-    let lut_size = adaptive_lut_size(axis_length).max(2048);
-    let color_lut = build_color_lut(&resolved_stops, axis_length, lut_size);
+    // Match angular resolution to the largest visible ring in this tile.
+    let dx_left = cx;
+    let dx_right = width as f32 - cx;
+    let dy_top = cy;
+    let dy_bottom = height as f32 - cy;
+    let max_radius = [
+      (dx_left * dx_left + dy_top * dy_top).sqrt(),
+      (dx_left * dx_left + dy_bottom * dy_bottom).sqrt(),
+      (dx_right * dx_right + dy_top * dy_top).sqrt(),
+      (dx_right * dx_right + dy_bottom * dy_bottom).sqrt(),
+    ]
+    .into_iter()
+    .fold(0.0_f32, f32::max);
+
+    let lut_size = adaptive_lut_size((TAU * max_radius).max(1.0));
+    let color_lut = build_color_lut(&resolved_stops, axis_degrees, lut_size);
 
     ConicGradientTile {
       width,
@@ -106,7 +114,6 @@ impl ConicGradientTile {
       cx,
       cy,
       start_rad,
-      resolved_stops,
       color_lut,
     }
   }
@@ -124,24 +131,12 @@ impl<'i> FromCss<'i> for ConicGradient {
       loop {
         // Try "from <angle>"
         if input.try_parse(|i| i.expect_ident_matching("from")).is_ok() {
-          if from_angle.is_some() {
-            let location = input.current_source_location();
-            return Err(
-              location.new_custom_error(std::borrow::Cow::Borrowed("duplicate 'from' clause")),
-            );
-          }
           from_angle = Some(Angle::from_css(input)?);
           continue;
         }
 
         // Try "at <position>"
         if input.try_parse(|i| i.expect_ident_matching("at")).is_ok() {
-          if center.is_some() {
-            let location = input.current_source_location();
-            return Err(
-              location.new_custom_error(std::borrow::Cow::Borrowed("duplicate 'at' clause")),
-            );
-          }
           center = Some(BackgroundPosition::from_css(input)?);
           continue;
         }
@@ -151,8 +146,7 @@ impl<'i> FromCss<'i> for ConicGradient {
         break;
       }
 
-      // Parse color stops (with double-stop expansion)
-      let GradientStops(stops) = GradientStops::from_css(input)?;
+      let stops = GradientStops::from_css(input)?;
 
       Ok(ConicGradient {
         from_angle: from_angle.unwrap_or(Angle::zero()),
@@ -199,11 +193,28 @@ mod tests {
 
   #[test]
   fn test_parse_conic_gradient_with_stops() {
-    let gradient = ConicGradient::from_str("conic-gradient(#ff0000 0%, #00ff00 50%, #0000ff 100%)");
-
-    assert!(gradient.is_ok());
-    let g = gradient.unwrap();
-    assert_eq!(g.stops.len(), 3);
+    assert_eq!(
+      ConicGradient::from_str("conic-gradient(#ff0000 0%, #00ff00 50%, #0000ff 100%)"),
+      Ok(ConicGradient {
+        from_angle: Angle::zero(),
+        center: BackgroundPosition::default(),
+        stops: [
+          GradientStop::ColorHint {
+            color: Color([255, 0, 0, 255]).into(),
+            hint: Some(StopPosition(Length::Percentage(0.0))),
+          },
+          GradientStop::ColorHint {
+            color: Color([0, 255, 0, 255]).into(),
+            hint: Some(StopPosition(Length::Percentage(50.0))),
+          },
+          GradientStop::ColorHint {
+            color: Color([0, 0, 255, 255]).into(),
+            hint: Some(StopPosition(Length::Percentage(100.0))),
+          },
+        ]
+        .into(),
+      })
+    );
   }
 
   #[test]

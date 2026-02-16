@@ -97,6 +97,18 @@ fn test_style_background_image_radial_mixed() {
 }
 
 #[test]
+fn test_style_background_image_conic_basic() {
+  let background_images = BackgroundImages::from_str(
+    "conic-gradient(from 0deg at 50% 50%, #ff3b30 0%, #ffcc00 25%, #34c759 50%, #007aff 75%, #ff3b30 100%)",
+  )
+  .unwrap();
+
+  let container = create_container(background_images);
+
+  run_fixture_test(container.into(), "style_background_image_conic_basic");
+}
+
+#[test]
 fn test_style_background_image_linear_radial_mixed() {
   let background_images = BackgroundImages::from_str(
     "linear-gradient(45deg, #0000ff, #00ff00), radial-gradient(circle, #000000, transparent)",
