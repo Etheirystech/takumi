@@ -285,20 +285,20 @@ fn push_stop_expanding_double<'i>(
   let stop = GradientStop::from_css(input)?;
 
   // Check for CSS double-stop syntax: `color pos1 pos2` → two stops
-  if let GradientStop::ColorHint { hint: Some(_), .. } = &stop {
-    if let Ok(pos2) = input.try_parse(StopPosition::from_css) {
-      // Extract the color before pushing (ColorInput is Copy)
-      let color = match &stop {
-        GradientStop::ColorHint { color, .. } => *color,
-        _ => unreachable!(),
-      };
-      stops.push(stop);
-      stops.push(GradientStop::ColorHint {
-        color,
-        hint: Some(pos2),
-      });
-      return Ok(());
-    }
+  if let GradientStop::ColorHint { hint: Some(_), .. } = &stop
+    && let Ok(pos2) = input.try_parse(StopPosition::from_css)
+  {
+    // Extract the color before pushing (ColorInput is Copy)
+    let color = match &stop {
+      GradientStop::ColorHint { color, .. } => *color,
+      _ => unreachable!(),
+    };
+    stops.push(stop);
+    stops.push(GradientStop::ColorHint {
+      color,
+      hint: Some(pos2),
+    });
+    return Ok(());
   }
 
   stops.push(stop);
