@@ -4,7 +4,7 @@ use derive_builder::Builder;
 use parley::{FontSettings, FontStack, TextStyle};
 use serde::Deserialize;
 use smallvec::SmallVec;
-use taffy::{Point, Size, prelude::FromLength};
+use taffy::{Point, Rect, Size, prelude::FromLength};
 
 use crate::{
   layout::{
@@ -137,7 +137,14 @@ define_style!(
   border_right_width: Option<Length>,
   border_bottom_width: Option<Length>,
   border_left_width: Option<Length>,
+  border_style: Option<BorderStyle>,
+  border_color: Option<ColorInput>,
   border: Border,
+  outline: Border,
+  outline_width: Option<Length>,
+  outline_style: Option<BorderStyle>,
+  outline_color: Option<ColorInput>,
+  outline_offset: Option<Length>,
   object_fit: ObjectFit,
   overflow: SpacePair<Overflow>,
   overflow_x: Option<Overflow>,
@@ -164,7 +171,6 @@ define_style!(
   text_transform: TextTransform where inherit = true,
   font_style: FontStyle where inherit = true,
   font_stretch: FontStretch where inherit = true,
-  border_color: Option<ColorInput>,
   color: ColorInput where inherit = true,
   filter: Filters,
   backdrop_filter: Filters,
@@ -201,11 +207,6 @@ define_style!(
   text_wrap_mode: Option<TextWrapMode> where inherit = true,
   text_wrap_style: Option<TextWrapStyle> where inherit = true,
   text_wrap: TextWrap where inherit = true,
-  outline: Outline,
-  outline_width: Option<Length>,
-  outline_style: Option<BorderStyle>,
-  outline_color: Option<ColorInput>,
-  outline_offset: Option<Length>,
   isolation: Isolation,
   mix_blend_mode: BlendMode,
   visibility: Visibility,
@@ -596,8 +597,7 @@ impl InheritedStyle {
     Self::resolve_rect_with_longhands(
       self
         .border_width
-        .or_else(|| self.border.width.map(Into::into))
-        .unwrap_or(Sides::zero()),
+        .unwrap_or_else(|| self.border.width.into()),
       self.border_inline_width,
       self.border_block_width,
       self.border_top_width,
@@ -677,15 +677,21 @@ impl InheritedStyle {
     let (grid_template_rows, grid_template_row_names) =
       Self::convert_template_components(&self.grid_template_rows, context);
 
+    let border_style = self.border_style.unwrap_or(self.border.style);
+
     taffy::style::Style {
       box_sizing: self.box_sizing.into(),
       size: Size {
         width: self.width.resolve_to_dimension(&context.sizing),
         height: self.height.resolve_to_dimension(&context.sizing),
       },
-      border: self
-        .resolved_border_width()
-        .map(|border| border.resolve_to_length_percentage(&context.sizing)),
+      border: if border_style == BorderStyle::None {
+        Rect::zero()
+      } else {
+        self
+          .resolved_border_width()
+          .map(|border| border.resolve_to_length_percentage(&context.sizing))
+      },
       padding: self
         .resolved_padding()
         .map(|padding| padding.resolve_to_length_percentage(&context.sizing)),
@@ -870,9 +876,9 @@ mod tests {
   fn test_resolve_border_width_precedence() {
     let inherited = Style {
       border: Border {
-        width: Some(Length::Px(1.0)),
-        style: None,
-        color: None,
+        width: Length::Px(1.0),
+        style: BorderStyle::None,
+        color: ColorInput::CurrentColor,
       }
       .into(),
       border_inline_width: Some(SpacePair::from_pair(Length::Px(2.0), Length::Px(3.0))).into(),

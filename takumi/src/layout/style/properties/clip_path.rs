@@ -4,8 +4,8 @@ use zeno::{Fill, PathBuilder, PathData, Placement};
 
 use crate::{
   layout::style::{
-    Axis, Color, CssToken, FromCss, ImageScalingAlgorithm, Length, MakeComputed, ParseResult,
-    Sides, SpacePair,
+    Axis, BorderStyle, Color, CssToken, FromCss, ImageScalingAlgorithm, Length, MakeComputed,
+    ParseResult, Sides, SpacePair,
   },
   rendering::{BorderProperties, MaskMemory, RenderContext, Sizing},
 };
@@ -228,6 +228,7 @@ impl BasicShape {
             })
             .unwrap_or_default(),
           image_rendering: ImageScalingAlgorithm::Auto,
+          style: BorderStyle::Solid,
         };
 
         border.append_mask_commands(

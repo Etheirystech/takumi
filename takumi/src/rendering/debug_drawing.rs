@@ -2,7 +2,7 @@ use image::RgbaImage;
 use taffy::Layout;
 
 use crate::{
-  layout::style::{Affine, Color, ImageScalingAlgorithm, Sides, SpacePair},
+  layout::style::{Affine, BorderStyle, Color, ImageScalingAlgorithm, Sides, SpacePair},
   rendering::{BorderProperties, Canvas},
 };
 
@@ -14,6 +14,7 @@ pub fn draw_debug_border(canvas: &mut Canvas, layout: Layout, transform: Affine)
     color: Color([255, 0, 0, 255]), // red
     radius: Sides([SpacePair::from_single(0.0); 4]),
     image_rendering: ImageScalingAlgorithm::Auto,
+    style: BorderStyle::Solid,
   }
   .draw::<RgbaImage>(canvas, layout.size, transform, None);
 
@@ -23,6 +24,7 @@ pub fn draw_debug_border(canvas: &mut Canvas, layout: Layout, transform: Affine)
     color: Color([0, 255, 0, 255]), // green
     radius: Sides([SpacePair::from_single(0.0); 4]),
     image_rendering: ImageScalingAlgorithm::Auto,
+    style: BorderStyle::Solid,
   }
   .draw::<RgbaImage>(
     canvas,

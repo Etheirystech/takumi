@@ -154,6 +154,7 @@ pub(crate) fn draw_inline_box<N: Node<N>>(
   item.node.draw_inset_box_shadow(&context, canvas, layout)?;
   item.node.draw_border(&context, canvas, layout)?;
   item.node.draw_content(&context, canvas, layout)?;
+  item.node.draw_outline(&context, canvas, layout)?;
 
   Ok(())
 }

@@ -157,6 +157,7 @@ fn create_rotated_container(angle: f32, transform_origin: BackgroundPosition) ->
         .height(Px(200.0))
         .background_color(ColorInput::Value(Color([255, 0, 0, 30])))
         .border_width(Some(Sides([Px(1.0); 4])))
+        .border_style(Some(BorderStyle::Solid))
         .border_radius(BorderRadius(Sides([SpacePair::from_single(Px(12.0)); 4])))
         .build()
         .unwrap(),
@@ -216,6 +217,7 @@ fn test_style_transform_translate_and_scale() {
         .width(Px(300.0))
         .height(Px(300.0))
         .border_width(Some(Sides([Px(1.0); 4])))
+        .border_style(Some(BorderStyle::Solid))
         .translate(Some(SpacePair::from_single(Px(300.0))))
         .background_color(ColorInput::Value(Color([0, 128, 255, 255])))
         .build()
@@ -251,6 +253,7 @@ fn test_style_transform_translate_and_scale() {
         .width(Px(100.0))
         .height(Px(100.0))
         .border_width(Some(Sides([Px(1.0); 4])))
+        .border_style(Some(BorderStyle::Solid))
         .font_size(Some(Px(12.0)))
         .build()
         .unwrap(),
@@ -277,6 +280,7 @@ fn test_style_transform_translate_and_scale() {
         .width(Px(200.0))
         .height(Px(200.0))
         .border_width(Some(Sides([Px(1.0); 4])))
+        .border_style(Some(BorderStyle::Solid))
         .color(ColorInput::Value(Color::white()))
         .border_color(Some(ColorInput::Value(Color::black())))
         .build()

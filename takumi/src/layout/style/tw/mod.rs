@@ -304,8 +304,12 @@ pub enum TailwindProperty {
   GridTemplateRows(TwGridTemplate),
   /// `letter-spacing` property.
   LetterSpacing(TwLetterSpacing),
+  /// Tailwind `border` utility (`border-width: 1px; border-style: solid`).
+  BorderDefault,
   /// `border-width` property.
   BorderWidth(TwBorderWidth),
+  /// `border-style` property.
+  BorderStyle(BorderStyle),
   /// `color` property.
   Color(ColorInput),
   /// `opacity` property.
@@ -326,6 +330,16 @@ pub enum TailwindProperty {
   BorderXWidth(TwBorderWidth),
   /// `border-block-width` property.
   BorderYWidth(TwBorderWidth),
+  /// Tailwind `outline` utility (`outline-width: 1px; outline-style: solid`).
+  OutlineDefault,
+  /// `outline-width` property.
+  OutlineWidth(TwBorderWidth),
+  /// `outline-color` property.
+  OutlineColor(ColorInput),
+  /// `outline-style` property.
+  OutlineStyle(BorderStyle),
+  /// `outline-offset` property.
+  OutlineOffset(TwBorderWidth),
   /// `border-radius` property.
   Rounded(TwRounded),
   /// `border-top-left-radius` property.
@@ -717,8 +731,15 @@ impl TailwindProperty {
       TailwindProperty::BackgroundImage(ref background_image) => {
         style.background_image = [background_image.clone()].into();
       }
+      TailwindProperty::BorderDefault => {
+        style.border_width = Some(Sides([Length::Px(1.0); 4])).into();
+        style.border_style = Some(BorderStyle::Solid).into();
+      }
       TailwindProperty::BorderWidth(tw_border_width) => {
         style.border_width = Some(Sides([tw_border_width.0; 4])).into();
+      }
+      TailwindProperty::BorderStyle(border_style) => {
+        style.border_style = Some(border_style).into();
       }
       TailwindProperty::JustifySelf(align_items) => {
         style.justify_self = align_items.into();
@@ -757,6 +778,22 @@ impl TailwindProperty {
       TailwindProperty::BorderYWidth(tw_border_width) => {
         style.border_top_width = Some(tw_border_width.0).into();
         style.border_bottom_width = Some(tw_border_width.0).into();
+      }
+      TailwindProperty::OutlineDefault => {
+        style.outline_width = Some(Length::Px(1.0)).into();
+        style.outline_style = Some(BorderStyle::Solid).into();
+      }
+      TailwindProperty::OutlineWidth(tw_border_width) => {
+        style.outline_width = Some(tw_border_width.0).into();
+      }
+      TailwindProperty::OutlineColor(color_input) => {
+        style.outline_color = Some(color_input).into();
+      }
+      TailwindProperty::OutlineStyle(outline_style) => {
+        style.outline_style = Some(outline_style).into();
+      }
+      TailwindProperty::OutlineOffset(outline_offset) => {
+        style.outline_offset = Some(outline_offset.0).into();
       }
       TailwindProperty::Rounded(rounded) => {
         style.border_radius = BorderRadius(Sides([SpacePair::from_single(rounded.0); 4])).into();
@@ -1164,6 +1201,10 @@ mod tests {
   #[test]
   fn test_parse_border_width() {
     assert_eq!(
+      TailwindProperty::parse("border"),
+      Some(TailwindProperty::BorderDefault)
+    );
+    assert_eq!(
       TailwindProperty::parse("border-t-2"),
       Some(TailwindProperty::BorderTopWidth(TwBorderWidth(Length::Px(
         2.0
@@ -1174,6 +1215,48 @@ mod tests {
       Some(TailwindProperty::BorderXWidth(TwBorderWidth(Length::Px(
         4.0
       ))))
+    );
+    assert_eq!(
+      TailwindProperty::parse("border-solid"),
+      Some(TailwindProperty::BorderStyle(BorderStyle::Solid))
+    );
+    assert_eq!(
+      TailwindProperty::parse("border-none"),
+      Some(TailwindProperty::BorderStyle(BorderStyle::None))
+    );
+  }
+
+  #[test]
+  fn test_parse_outline() {
+    assert_eq!(
+      TailwindProperty::parse("outline"),
+      Some(TailwindProperty::OutlineDefault)
+    );
+    assert_eq!(
+      TailwindProperty::parse("outline-2"),
+      Some(TailwindProperty::OutlineWidth(TwBorderWidth(Length::Px(
+        2.0
+      ))))
+    );
+    assert_eq!(
+      TailwindProperty::parse("outline-red-500"),
+      Some(TailwindProperty::OutlineColor(ColorInput::Value(Color([
+        239, 68, 68, 255
+      ]))))
+    );
+    assert_eq!(
+      TailwindProperty::parse("outline-solid"),
+      Some(TailwindProperty::OutlineStyle(BorderStyle::Solid))
+    );
+    assert_eq!(
+      TailwindProperty::parse("outline-offset-4"),
+      Some(TailwindProperty::OutlineOffset(TwBorderWidth(Length::Px(
+        4.0
+      ))))
+    );
+    assert_eq!(
+      TailwindProperty::parse("outline-none"),
+      Some(TailwindProperty::OutlineStyle(BorderStyle::None))
     );
   }
 
@@ -1237,6 +1320,13 @@ mod tests {
       // Borders
       "border",
       "border-t-2",
+      "border-solid",
+      "border-none",
+      "outline",
+      "outline-2",
+      "outline-red-500",
+      "outline-solid",
+      "outline-offset-2",
       "rounded-lg",
       // Transforms
       "rotate-45",

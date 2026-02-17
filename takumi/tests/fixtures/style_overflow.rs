@@ -29,6 +29,7 @@ fn create_overflow_fixture(overflows: SpacePair<Overflow>) -> NodeKind {
             .width(Px(200.0))
             .height(Px(200.0))
             .border_width(Some(Sides([Px(4.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .border_color(Some(Color([255, 0, 0, 255]).into()))
             .overflow(overflows)
             .build()
@@ -43,6 +44,7 @@ fn create_overflow_fixture(overflows: SpacePair<Overflow>) -> NodeKind {
                 .width(Px(300.0))
                 .height(Px(300.0))
                 .border_width(Some(Sides([Px(4.0); 4])))
+                .border_style(Some(BorderStyle::Solid))
                 .border_color(Some(Color([0, 255, 0, 255]).into()))
                 .build()
                 .unwrap(),
@@ -85,6 +87,7 @@ fn create_text_overflow_fixture(overflows: SpacePair<Overflow>) -> NodeKind {
             .width(Px(400.0))
             .height(Px(200.0))
             .border_width(Some(Sides([Px(4.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .border_color(Some(Color([0, 0, 0, 255]).into()))
             .overflow(overflows)
             .build()
@@ -99,6 +102,7 @@ fn create_text_overflow_fixture(overflows: SpacePair<Overflow>) -> NodeKind {
               .font_size(Some(Rem(4.0)))
               .color(ColorInput::Value(Color([0, 0, 0, 255])))
               .border_width(Some(Sides([Px(2.0); 4])))
+              .border_style(Some(BorderStyle::Solid))
               .border_color(Some(Color([255, 0, 0, 255]).into()))
               .build()
               .unwrap(),

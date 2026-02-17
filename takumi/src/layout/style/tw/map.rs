@@ -19,6 +19,7 @@ pub enum PropertyParser {
   Align(fn(AlignItems) -> TailwindProperty),
   Overflow(fn(Overflow) -> TailwindProperty),
   BorderWidth(fn(TwBorderWidth) -> TailwindProperty),
+  BorderStyle(fn(BorderStyle) -> TailwindProperty),
   Rounded(fn(TwRounded) -> TailwindProperty),
   GridTemplate(fn(TwGridTemplate) -> TailwindProperty),
   GridAuto(fn(GridTrackSize) -> TailwindProperty),
@@ -65,6 +66,7 @@ impl PropertyParser {
       Self::Align(f) => AlignItems::parse_tw_with_arbitrary(suffix).map(f),
       Self::Overflow(f) => Overflow::parse_tw_with_arbitrary(suffix).map(f),
       Self::BorderWidth(f) => TwBorderWidth::parse_tw_with_arbitrary(suffix).map(f),
+      Self::BorderStyle(f) => BorderStyle::parse_tw_with_arbitrary(suffix).map(f),
       Self::Rounded(f) => TwRounded::parse_tw_with_arbitrary(suffix).map(f),
       Self::GridTemplate(f) => TwGridTemplate::parse_tw_with_arbitrary(suffix).map(f),
       Self::GridAuto(f) => GridTrackSize::parse_tw_with_arbitrary(suffix).map(f),
@@ -137,6 +139,7 @@ pub static PREFIX_PARSERS: phf::Map<&str, &[PropertyParser]> = phf_map! {
   "overflow" => &[PropertyParser::Overflow(TailwindProperty::Overflow)],
   "border" => &[
     PropertyParser::ColorCurrent(TailwindProperty::BorderColor),
+    PropertyParser::BorderStyle(TailwindProperty::BorderStyle),
     PropertyParser::BorderWidth(TailwindProperty::BorderWidth),
   ],
   "border-t" => &[PropertyParser::BorderWidth(TailwindProperty::BorderTopWidth)],
@@ -145,6 +148,12 @@ pub static PREFIX_PARSERS: phf::Map<&str, &[PropertyParser]> = phf_map! {
   "border-l" => &[PropertyParser::BorderWidth(TailwindProperty::BorderLeftWidth)],
   "border-x" => &[PropertyParser::BorderWidth(TailwindProperty::BorderXWidth)],
   "border-y" => &[PropertyParser::BorderWidth(TailwindProperty::BorderYWidth)],
+  "outline" => &[
+    PropertyParser::ColorCurrent(TailwindProperty::OutlineColor),
+    PropertyParser::BorderStyle(TailwindProperty::OutlineStyle),
+    PropertyParser::BorderWidth(TailwindProperty::OutlineWidth),
+  ],
+  "outline-offset" => &[PropertyParser::BorderWidth(TailwindProperty::OutlineOffset)],
   "grow" | "flex-grow" => &[PropertyParser::FlexGrow(TailwindProperty::FlexGrow)],
   "shrink" | "flex-shrink" => &[PropertyParser::FlexGrow(TailwindProperty::FlexShrink)],
   "basis" | "flex-basis" => &[PropertyParser::LengthAuto(TailwindProperty::FlexBasis)],
@@ -239,7 +248,8 @@ pub static PREFIX_PARSERS: phf::Map<&str, &[PropertyParser]> = phf_map! {
 };
 
 pub static FIXED_PROPERTIES: phf::Map<&str, TailwindProperty> = phf_map! {
-  "border" => TailwindProperty::BorderWidth(TwBorderWidth(Length::Px(1.0))),
+  "border" => TailwindProperty::BorderDefault,
+  "outline" => TailwindProperty::OutlineDefault,
   "box-border" => TailwindProperty::BoxSizing(BoxSizing::BorderBox),
   "box-content" => TailwindProperty::BoxSizing(BoxSizing::ContentBox),
   "inline" => TailwindProperty::Display(Display::Inline),

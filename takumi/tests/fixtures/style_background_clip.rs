@@ -36,6 +36,7 @@ fn create_container_with_background_clip(
             .background_clip(background_clip)
             .padding(Sides([Px(padding); 4]))
             .border_width(Some(Sides([Px(border_width); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .border_color(Some(ColorInput::Value(Color([0, 0, 0, 255]))))
             .border_radius(BorderRadius(Sides([SpacePair::from_single(Px(8.0)); 4])))
             .build()
@@ -201,6 +202,7 @@ fn test_style_background_clip_border_area() {
             .background_clip(BackgroundClip::BorderArea)
             .padding(Sides([Px(20.0); 4]))
             .border_width(Some(Sides([Px(10.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .border_color(Some(ColorInput::Value(Color([0, 0, 0, 128]))))
             .border_radius(BorderRadius(Sides([SpacePair::from_single(Px(8.0)); 4])))
             .build()
@@ -246,6 +248,7 @@ fn test_style_background_clip_with_gradient_background() {
             .background_clip(BackgroundClip::PaddingBox)
             .padding(Sides([Px(30.0); 4]))
             .border_width(Some(Sides([Px(15.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .border_color(Some(ColorInput::Value(Color([255, 255, 255, 255]))))
             .build()
             .unwrap(),
@@ -333,6 +336,7 @@ fn test_style_background_clip_comparison() {
               .background_clip(BackgroundClip::BorderBox)
               .padding(Sides([Px(15.0); 4]))
               .border_width(Some(Sides([Px(8.0); 4])))
+              .border_style(Some(BorderStyle::Solid))
               .border_color(Some(ColorInput::Value(Color([0, 0, 0, 128]))))
               .build()
               .unwrap(),
@@ -367,6 +371,7 @@ fn test_style_background_clip_comparison() {
               .background_clip(BackgroundClip::PaddingBox)
               .padding(Sides([Px(15.0); 4]))
               .border_width(Some(Sides([Px(8.0); 4])))
+              .border_style(Some(BorderStyle::Solid))
               .border_color(Some(ColorInput::Value(Color([0, 0, 0, 128]))))
               .build()
               .unwrap(),
@@ -401,6 +406,7 @@ fn test_style_background_clip_comparison() {
               .background_clip(BackgroundClip::ContentBox)
               .padding(Sides([Px(15.0); 4]))
               .border_width(Some(Sides([Px(8.0); 4])))
+              .border_style(Some(BorderStyle::Solid))
               .border_color(Some(ColorInput::Value(Color([0, 0, 0, 128]))))
               .build()
               .unwrap(),

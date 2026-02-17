@@ -2,6 +2,7 @@ mod container;
 mod image;
 mod text;
 
+use ::image::RgbaImage;
 pub use container::*;
 pub use image::*;
 pub use text::*;
@@ -16,13 +17,13 @@ use crate::{
     Viewport,
     inline::InlineContentKind,
     style::{
-      Affine, BackgroundClip, BackgroundImage, BlendMode, ColorInput, CssValue, InheritedStyle,
-      Length, Sides, Style,
+      Affine, BackgroundClip, BackgroundImage, BlendMode, CssValue, InheritedStyle, Length, Sides,
+      Style,
     },
   },
   rendering::{
-    BorderProperties, Canvas, RenderContext, SizedShadow, apply_mask_alpha_to_pixel,
-    collect_background_layers, mask_index_from_coord, overlay_area, rasterize_layers,
+    BorderProperties, Canvas, RenderContext, SizedShadow, collect_background_layers,
+    rasterize_layers,
   },
   resources::task::FetchTaskCollection,
 };
@@ -452,33 +453,18 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
   }
 
   /// Draws the outline of the node.
-  ///
-  /// CSS outline is drawn outside the border edge and does not affect layout.
-  /// Supports `outline`, `outline-width`, `outline-color`, and `outline-offset`.
   fn draw_outline(
     &self,
     context: &RenderContext,
     canvas: &mut Canvas,
     layout: Layout,
   ) -> Result<()> {
-    // Resolve outline properties from shorthand + longhands
-    let outline_shorthand = &context.style.outline;
     let width = context
       .style
       .outline_width
-      .or(outline_shorthand.width)
-      .unwrap_or(Length::zero());
-    let color = context
-      .style
-      .outline_color
-      .or(outline_shorthand.color)
-      .unwrap_or(ColorInput::CurrentColor);
-
-    let width_px = width.to_px(&context.sizing, layout.size.width);
-
-    if width_px <= 0.0 {
-      return Ok(());
-    }
+      .unwrap_or(context.style.outline.width)
+      .to_px(&context.sizing, layout.size.width)
+      .max(0.0);
 
     let offset = context
       .style
@@ -486,74 +472,27 @@ pub trait Node<N: Node<N>>: Send + Sync + Clone {
       .unwrap_or(Length::zero())
       .to_px(&context.sizing, layout.size.width);
 
-    let resolved_color = color.resolve(context.current_color);
-
-    // Build the outline as two rounded rects (outer - inner), similar to border rendering.
-    // The inner edge of the outline sits at (border-box + offset) from the border box edge.
-    // The outer edge sits at (border-box + offset + outline-width).
-    let border_radius = BorderProperties::from_context(context, layout.size, layout.border);
-
-    // Expand radii outward by offset for the inner edge of the outline
-    let mut inner_radius = border_radius;
-    inner_radius.expand_by(Sides([offset; 4]).into());
-
-    // Expand radii outward by offset + width for the outer edge
-    let mut outer_radius = border_radius;
-    outer_radius.expand_by(Sides([offset + width_px; 4]).into());
-
-    let inner_size = Size {
-      width: (layout.size.width + 2.0 * offset).max(0.0),
-      height: (layout.size.height + 2.0 * offset).max(0.0),
+    let mut border = BorderProperties {
+      width: Sides([width; 4]).into(),
+      color: context
+        .style
+        .outline_color
+        .unwrap_or(context.style.outline.color)
+        .resolve(context.current_color),
+      style: context
+        .style
+        .outline_style
+        .unwrap_or(context.style.outline.style),
+      image_rendering: context.style.image_rendering,
+      radius: BorderProperties::resolve_radius_part(context, layout.size),
     };
 
-    let outer_size = Size {
-      width: (layout.size.width + 2.0 * (offset + width_px)).max(0.0),
-      height: (layout.size.height + 2.0 * (offset + width_px)).max(0.0),
-    };
+    border.expand_by(Sides([offset + width; 4]).into());
 
-    let inner_offset = Point {
-      x: -offset,
-      y: -offset,
-    };
+    let transform = Affine::translation(-offset - width, -offset - width) * context.transform;
+    let size = layout.size.map(|x| x + (offset + width) * 2.0);
 
-    let outer_offset = Point {
-      x: -(offset + width_px),
-      y: -(offset + width_px),
-    };
-
-    // 20 = 10 commands per rounded rect × 2 rects
-    let mut paths = Vec::with_capacity(20);
-
-    // Outer path
-    outer_radius.append_mask_commands(&mut paths, outer_size, outer_offset);
-    // Inner path (will be subtracted via even-odd fill)
-    inner_radius.append_mask_commands(&mut paths, inner_size, inner_offset);
-
-    let (mask, placement) = canvas.mask_memory.render(
-      &paths,
-      Some(context.transform),
-      Some(zeno::Fill::EvenOdd.into()),
-    );
-
-    overlay_area(
-      &mut canvas.image,
-      Point {
-        x: placement.left as f32,
-        y: placement.top as f32,
-      },
-      Size {
-        width: placement.width,
-        height: placement.height,
-      },
-      BlendMode::Normal,
-      canvas.constrains.last(),
-      |x, y| {
-        let alpha = mask[mask_index_from_coord(x, y, placement.width)];
-        let mut pixel: ::image::Rgba<u8> = resolved_color.into();
-        apply_mask_alpha_to_pixel(&mut pixel, alpha);
-        pixel
-      },
-    );
+    border.draw::<RgbaImage>(canvas, size, transform, None);
 
     Ok(())
   }

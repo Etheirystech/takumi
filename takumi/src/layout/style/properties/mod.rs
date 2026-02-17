@@ -74,8 +74,6 @@ pub use line_clamp::*;
 pub use line_height::*;
 pub use linear_gradient::*;
 pub use noise_v1::*;
-/// CSS outline shorthand — structurally identical to `Border` (width / style / color).
-pub type Outline = Border;
 pub use overflow::*;
 pub use overflow_wrap::*;
 pub use percentage_number::*;
@@ -924,6 +922,28 @@ declare_enum_from_css_impl!(
   "smooth" => ImageScalingAlgorithm::Smooth,
   "pixelated" => ImageScalingAlgorithm::Pixelated
 );
+
+/// Represents border style options.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub enum BorderStyle {
+  /// No border will be rendered.
+  #[default]
+  None,
+  /// Solid border style.
+  Solid,
+}
+
+declare_enum_from_css_impl!(
+  BorderStyle,
+  "none" => BorderStyle::None,
+  "solid" => BorderStyle::Solid,
+);
+
+impl TailwindPropertyParser for BorderStyle {
+  fn parse_tw(token: &str) -> Option<Self> {
+    Self::from_str(token).ok()
+  }
+}
 
 impl From<ImageScalingAlgorithm> for FilterType {
   fn from(algorithm: ImageScalingAlgorithm) -> Self {

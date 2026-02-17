@@ -80,6 +80,7 @@ fn test_style_border_width() {
         .height(Percentage(100.0))
         .background_color(ColorInput::Value(Color::white()))
         .border_width(Some(Sides([Px(10.0); 4])))
+        .border_style(Some(BorderStyle::Solid))
         .border_color(Some(ColorInput::Value(Color([255, 0, 0, 255]))))
         .build()
         .unwrap(),
@@ -115,6 +116,7 @@ fn test_style_border_width_with_radius() {
             .border_radius(BorderRadius(Sides([SpacePair::from_single(Px(10.0)); 4])))
             .border_color(Some(ColorInput::Value(Color([255, 0, 0, 255]))))
             .border_width(Some(Sides([Px(4.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .build()
             .unwrap(),
         ),
@@ -305,6 +307,7 @@ fn test_style_border_radius_width_offset() {
             .height(Percentage(100.0))
             .background_color(ColorInput::Value(Color::white()))
             .border_width(Some(Sides([Px(1.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .border_radius(BorderRadius(Sides([SpacePair::from_single(Px(24.0)); 4])))
             .border_color(Some(ColorInput::Value(Color([0, 0, 0, 255]))))
             .build()
@@ -366,6 +369,7 @@ fn test_style_border_radius_circle_avatar() {
             )))
             .border_color(Some(ColorInput::Value(Color([128, 128, 128, 128])))) // gray
             .border_width(Some(Sides([Px(4.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .build()
             .unwrap(),
         ),
@@ -431,4 +435,39 @@ fn test_style_border_width_on_image_node() {
   };
 
   run_fixture_test(container.into(), "style_border_width_on_image_node");
+}
+
+#[test]
+fn test_style_outline() {
+  let outlined_box = json!({
+    "type": "container",
+    "style": {
+      "width": 240,
+      "height": 140,
+      "backgroundColor": "#0ea5e9",
+      "borderRadius": 16,
+      "outlineWidth": 10,
+      "outlineColor": "#111827",
+      "outlineOffset": 8,
+      "outlineStyle": "solid"
+    }
+  });
+
+  let container = ContainerNode {
+    preset: None,
+    tw: None,
+    style: Some(
+      StyleBuilder::default()
+        .width(Percentage(100.0))
+        .height(Percentage(100.0))
+        .background_color(ColorInput::Value(Color::white()))
+        .justify_content(JustifyContent::Center)
+        .align_items(AlignItems::Center)
+        .build()
+        .unwrap(),
+    ),
+    children: Some([from_value(outlined_box).unwrap()].into()),
+  };
+
+  run_fixture_test(container.into(), "style_outline");
 }

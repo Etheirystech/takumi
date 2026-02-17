@@ -96,6 +96,7 @@ fn inline_image() {
         StyleBuilder::default()
           .display(Display::Inline)
           .border_width(Sides([Px(12.0); 4]))
+          .border_style(BorderStyle::Solid)
           .border_color(ColorInput::Value(Color::transparent()))
           .background_image(BackgroundImages::from_str("linear-gradient(to right, red, blue)").ok())
           .background_clip(BackgroundClip::BorderArea)
@@ -142,6 +143,7 @@ fn inline_image() {
         style: Some(
           StyleBuilder::default()
             .border_width(Some(Sides([Px(2.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .display(Display::Block)
             .font_size(Some(Px(48.0)))
             .build()

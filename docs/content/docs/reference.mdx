@@ -161,13 +161,18 @@ An image node displays rasterized or svg images.
     </tr>
     <tr>
       <td>`border`</td>
-      <td>`borderWidth` (`borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineWidth`, `borderBlockWidth`), `borderColor`</td>
-      <td>Only `solid` style is supported</td>
+      <td>`borderWidth` (`borderTopWidth`, `borderRightWidth`, `borderBottomWidth`, `borderLeftWidth`, `borderInlineWidth`, `borderBlockWidth`), `borderStyle`, `borderColor`</td>
+      <td>Only `solid`, `none` style is supported</td>
     </tr>
     <tr>
       <td>`borderRadius`</td>
       <td>`borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomRightRadius`, `borderBottomLeftRadius`</td>
       <td>Supported</td>
+    </tr>
+    <tr>
+      <td>`outline`</td>
+      <td>`outlineWidth`, `outlineStyle`, `outlineColor`, `outlineOffset`</td>
+      <td>Only `solid`, `none` style is supported</td>
     </tr>
     <tr>
       <td rowSpan={3}>`flex`</td>

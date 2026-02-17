@@ -5,7 +5,7 @@ use taffy::{Point, Rect, Size};
 use zeno::{Command, Fill, PathBuilder};
 
 use crate::{
-  layout::style::{Affine, BlendMode, Color, ColorInput, ImageScalingAlgorithm, Sides, SpacePair},
+  layout::style::{Affine, BlendMode, BorderStyle, Color, ImageScalingAlgorithm, Sides, SpacePair},
   rendering::{
     Canvas, RenderContext, apply_mask_alpha_to_pixel, blend_pixel, mask_index_from_coord,
     overlay_area, sample_transformed_pixel,
@@ -21,6 +21,8 @@ pub(crate) struct BorderProperties {
   pub color: Color,
   /// Corner radii: top, right, bottom, left (in pixels)
   pub radius: Sides<SpacePair<f32>>,
+  /// The style of the border
+  pub style: BorderStyle,
   /// The image rendering algorithm to use when sampling the image.
   pub image_rendering: ImageScalingAlgorithm,
 }
@@ -36,8 +38,24 @@ impl BorderProperties {
       width: Rect::ZERO,
       color: Color([0, 0, 0, 255]),
       radius: Sides([SpacePair::from_single(0.0); 4]),
+      style: BorderStyle::None,
       image_rendering: ImageScalingAlgorithm::Auto,
     }
+  }
+
+  /// Resolves the border radius from the context and layout.
+  pub fn resolve_radius_part(
+    context: &RenderContext,
+    border_box: Size<f32>,
+  ) -> Sides<SpacePair<f32>> {
+    let resolved = context.style.resolved_border_radius();
+
+    let top_left = resolved.top.to_px(&context.sizing, border_box);
+    let top_right = resolved.right.to_px(&context.sizing, border_box);
+    let bottom_right = resolved.bottom.to_px(&context.sizing, border_box);
+    let bottom_left = resolved.left.to_px(&context.sizing, border_box);
+
+    Sides([top_left, top_right, bottom_right, bottom_left])
   }
 
   /// Resolves the border radius from the context and layout.
@@ -46,22 +64,18 @@ impl BorderProperties {
     border_box: Size<f32>,
     border_width: Rect<f32>,
   ) -> Self {
-    let resolved = context.style.resolved_border_radius();
-
-    let top_left = resolved.top.to_px(&context.sizing, border_box);
-    let top_right = resolved.right.to_px(&context.sizing, border_box);
-    let bottom_right = resolved.bottom.to_px(&context.sizing, border_box);
-    let bottom_left = resolved.left.to_px(&context.sizing, border_box);
-
     Self {
       width: border_width,
       color: context
         .style
         .border_color
-        .or(context.style.border.color)
-        .unwrap_or(ColorInput::CurrentColor)
+        .unwrap_or(context.style.border.color)
         .resolve(context.current_color),
-      radius: Sides([top_left, top_right, bottom_right, bottom_left]),
+      radius: Self::resolve_radius_part(context, border_box),
+      style: context
+        .style
+        .border_style
+        .unwrap_or(context.style.border.style),
       image_rendering: context.style.image_rendering,
     }
   }
@@ -80,6 +94,10 @@ impl BorderProperties {
   /// and each corner's y-radius is adjusted by the corresponding vertical side (top or bottom).
   /// Negative values in `amount` will shrink the radii, and the result is clamped to 0.0.
   pub fn expand_by(&mut self, amount: Rect<f32>) {
+    if amount == Rect::ZERO {
+      return;
+    }
+
     // top-left
     self.radius.0[0].x = (self.radius.0[0].x + amount.left).max(0.0);
     self.radius.0[0].y = (self.radius.0[0].y + amount.top).max(0.0);
@@ -249,10 +267,11 @@ impl BorderProperties {
       );
     }
 
-    if self.width.left == 0.0
-      && self.width.right == 0.0
-      && self.width.top == 0.0
-      && self.width.bottom == 0.0
+    if self.style == BorderStyle::None
+      || (self.width.left == 0.0
+        && self.width.right == 0.0
+        && self.width.top == 0.0
+        && self.width.bottom == 0.0)
     {
       return;
     }

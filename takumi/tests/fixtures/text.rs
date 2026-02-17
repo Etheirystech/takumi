@@ -674,6 +674,7 @@ fn text_ellipsis_text_nowrap() {
             .text_overflow(TextOverflow::Ellipsis)
             .text_wrap_mode(Some(TextWrapMode::NoWrap))
             .border_width(Some(Sides([Px(1.0); 4])))
+            .border_style(Some(BorderStyle::Solid))
             .border_color(Some(ColorInput::Value(Color([255, 0, 0, 255]))))
             .word_break(WordBreak::BreakAll)
             .width(Percentage(100.0))
