@@ -242,6 +242,7 @@ pub(crate) fn draw_inline_box<N: Node<N>>(
       item.node.draw_background(&context, canvas, layout)?;
       item.node.draw_inset_box_shadow(&context, canvas, layout)?;
       item.node.draw_border(&context, canvas, layout)?;
+      item.node.draw_outline(&context, canvas, layout)?;
     }
     CanvasConstrainResult::Some(constrain) => match constrain {
       CanvasConstrain::ClipPath { .. } | CanvasConstrain::MaskImage { .. } => {
@@ -250,12 +251,14 @@ pub(crate) fn draw_inline_box<N: Node<N>>(
         item.node.draw_background(&context, canvas, layout)?;
         item.node.draw_inset_box_shadow(&context, canvas, layout)?;
         item.node.draw_border(&context, canvas, layout)?;
+        item.node.draw_outline(&context, canvas, layout)?;
       }
       CanvasConstrain::Overflow { .. } => {
         item.node.draw_outset_box_shadow(&context, canvas, layout)?;
         item.node.draw_background(&context, canvas, layout)?;
         item.node.draw_inset_box_shadow(&context, canvas, layout)?;
         item.node.draw_border(&context, canvas, layout)?;
+        item.node.draw_outline(&context, canvas, layout)?;
         canvas.push_constrain(constrain);
       }
     },
@@ -443,7 +446,7 @@ pub(crate) fn render_abs_pos_children<'g, N: Node<N>>(
 
     let has_constrain = constrain.is_some();
 
-    // Draw the child's visual shell (background, border, shadows, etc.)
+    // Draw the child's visual shell (background, border, shadows, outline, etc.)
     match constrain {
       CanvasConstrainResult::None => {
         if let Some(ref node) = child.node {
@@ -451,6 +454,7 @@ pub(crate) fn render_abs_pos_children<'g, N: Node<N>>(
           node.draw_background(&child_ctx, canvas, child_layout)?;
           node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
           node.draw_border(&child_ctx, canvas, child_layout)?;
+          node.draw_outline(&child_ctx, canvas, child_layout)?;
         }
       }
       CanvasConstrainResult::Some(constrain) => match constrain {
@@ -461,6 +465,7 @@ pub(crate) fn render_abs_pos_children<'g, N: Node<N>>(
             node.draw_background(&child_ctx, canvas, child_layout)?;
             node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
             node.draw_border(&child_ctx, canvas, child_layout)?;
+            node.draw_outline(&child_ctx, canvas, child_layout)?;
           }
         }
         CanvasConstrain::Overflow { .. } => {
@@ -469,6 +474,7 @@ pub(crate) fn render_abs_pos_children<'g, N: Node<N>>(
             node.draw_background(&child_ctx, canvas, child_layout)?;
             node.draw_inset_box_shadow(&child_ctx, canvas, child_layout)?;
             node.draw_border(&child_ctx, canvas, child_layout)?;
+            node.draw_outline(&child_ctx, canvas, child_layout)?;
           }
           canvas.push_constrain(constrain);
         }
