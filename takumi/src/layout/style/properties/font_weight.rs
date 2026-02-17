@@ -1,11 +1,15 @@
 use cssparser::{Parser, match_ignore_ascii_case};
 use parley::style::FontWeight as ParleyFontWeight;
 
-use crate::layout::style::{CssToken, FromCss, ParseResult, tw::TailwindPropertyParser};
+use crate::layout::style::{
+  CssToken, FromCss, MakeComputed, ParseResult, tw::TailwindPropertyParser,
+};
 
 /// Represents font weight value.
 #[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct FontWeight(ParleyFontWeight);
+
+impl MakeComputed for FontWeight {}
 
 impl<'i> FromCss<'i> for FontWeight {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {

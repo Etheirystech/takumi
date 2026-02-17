@@ -1,6 +1,11 @@
 use cssparser::{Parser, Token, match_ignore_ascii_case};
 
-use crate::layout::style::{CssToken, FromCss, Length, ParseResult, tw::TailwindPropertyParser};
+use crate::{
+  layout::style::{
+    CssToken, FromCss, Length, MakeComputed, ParseResult, tw::TailwindPropertyParser,
+  },
+  rendering::Sizing,
+};
 
 /// Parsed `background-size` for one layer.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -62,6 +67,15 @@ impl<'i> FromCss<'i> for BackgroundSize {
       CssToken::Keyword("contain"),
       CssToken::Token("length"),
     ]
+  }
+}
+
+impl MakeComputed for BackgroundSize {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    if let Self::Explicit { width, height } = self {
+      width.make_computed(sizing);
+      height.make_computed(sizing);
+    }
   }
 }
 

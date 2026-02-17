@@ -2,7 +2,10 @@ use std::{borrow::Cow, fmt::Debug};
 
 use cssparser::{BasicParseErrorKind, ParseError, Parser};
 
-use crate::layout::style::{Color, ColorInput, CssToken, FromCss, Length, ParseResult};
+use crate::{
+  layout::style::{Color, ColorInput, CssToken, FromCss, Length, MakeComputed, ParseResult},
+  rendering::Sizing,
+};
 
 /// Represents a box shadow with all its properties.
 ///
@@ -142,6 +145,15 @@ impl<'i> FromCss<'i> for BoxShadow {
       CssToken::Token("length"),
       CssToken::Token("color"),
     ]
+  }
+}
+
+impl MakeComputed for BoxShadow {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.offset_x.make_computed(sizing);
+    self.offset_y.make_computed(sizing);
+    self.blur_radius.make_computed(sizing);
+    self.spread_radius.make_computed(sizing);
   }
 }
 

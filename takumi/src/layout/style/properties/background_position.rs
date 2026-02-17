@@ -2,7 +2,9 @@ use cssparser::{Parser, Token, match_ignore_ascii_case};
 use taffy::{Point, Size};
 
 use crate::{
-  layout::style::{CssToken, FromCss, Length, ParseResult, SpacePair, tw::TailwindPropertyParser},
+  layout::style::{
+    CssToken, FromCss, Length, MakeComputed, ParseResult, SpacePair, tw::TailwindPropertyParser,
+  },
   rendering::Sizing,
 };
 
@@ -39,6 +41,20 @@ pub enum PositionComponent {
   Length(Length),
 }
 
+impl MakeComputed for PositionComponent {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    if let Self::Length(length) = self {
+      length.make_computed(sizing);
+    }
+  }
+}
+
+impl From<Length> for PositionComponent {
+  fn from(value: Length) -> Self {
+    PositionComponent::Length(value)
+  }
+}
+
 impl From<PositionComponent> for Length {
   fn from(component: PositionComponent) -> Self {
     match component {
@@ -60,6 +76,12 @@ impl From<PositionComponent> for Length {
 /// Parsed `background-position` value for one layer.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BackgroundPosition(pub SpacePair<PositionComponent>);
+
+impl MakeComputed for BackgroundPosition {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.0.make_computed(sizing);
+  }
+}
 
 impl BackgroundPosition {
   pub(crate) fn to_point(self, sizing: &Sizing, border_box: Size<f32>) -> Point<f32> {
@@ -149,7 +171,7 @@ impl<'i> FromCss<'i> for BackgroundPosition {
 impl<'i> FromCss<'i> for PositionComponent {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
     if let Ok(v) = input.try_parse(Length::from_css) {
-      return Ok(PositionComponent::Length(v));
+      return Ok(v.into());
     }
 
     let location = input.current_source_location();

@@ -2,7 +2,7 @@ use cssparser::{Parser, Token};
 use taffy::CompactLength;
 
 use crate::{
-  layout::style::{CssToken, FromCss, Length, ParseResult},
+  layout::style::{CssToken, FromCss, Length, MakeComputed, ParseResult},
   rendering::Sizing,
 };
 
@@ -55,6 +55,14 @@ impl<'i> FromCss<'i> for GridLength {
 
   fn valid_tokens() -> &'static [CssToken] {
     Length::<true>::valid_tokens()
+  }
+}
+
+impl MakeComputed for GridLength {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    if let GridLength::Unit(unit) = self {
+      unit.make_computed(sizing);
+    }
   }
 }
 

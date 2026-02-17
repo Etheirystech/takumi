@@ -259,3 +259,69 @@ fn clip_path_inset_rounded() {
 
   run_fixture_test(container.into(), "clip_path_inset_rounded");
 }
+
+// Test: clip-path on parent clips absolutely-positioned children
+#[test]
+fn clip_path_inset_round_clips_children() {
+  // Outer wrapper (white background, defines canvas)
+  let container = ContainerNode {
+    preset: None,
+    tw: None,
+    style: Some(
+      StyleBuilder::default()
+        .width(Percentage(100.0))
+        .height(Percentage(100.0))
+        .background_color(ColorInput::Value(Color::white()))
+        .build()
+        .unwrap(),
+    ),
+    children: Some(
+      [
+        // Inner container with clip-path: inset(0px round 50px)
+        ContainerNode {
+          preset: None,
+          tw: None,
+          style: Some(
+            StyleBuilder::default()
+              .position(Position::Absolute)
+              .top(Some(Px(0.0)))
+              .left(Some(Px(0.0)))
+              .width(Percentage(100.0))
+              .height(Percentage(100.0))
+              .clip_path(Some(BasicShape::from_str("inset(0px round 50px)").unwrap()))
+              .background_color(ColorInput::Value(Color([0, 0, 0, 255]))) // Black bg
+              .build()
+              .unwrap(),
+          ),
+          children: Some(
+            [
+              // Full-bleed red child — should be clipped to rounded rect
+              ContainerNode {
+                preset: None,
+                tw: None,
+                style: Some(
+                  StyleBuilder::default()
+                    .position(Position::Absolute)
+                    .top(Some(Px(0.0)))
+                    .left(Some(Px(0.0)))
+                    .width(Percentage(100.0))
+                    .height(Percentage(100.0))
+                    .background_color(ColorInput::Value(Color([255, 0, 0, 255])))
+                    .build()
+                    .unwrap(),
+                ),
+                children: None,
+              }
+              .into(),
+            ]
+            .into(),
+          ),
+        }
+        .into(),
+      ]
+      .into(),
+    ),
+  };
+
+  run_fixture_test(container.into(), "clip_path_inset_round_clips_children");
+}

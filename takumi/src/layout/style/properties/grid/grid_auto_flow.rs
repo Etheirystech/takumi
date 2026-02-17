@@ -1,6 +1,6 @@
 use cssparser::Parser;
 
-use crate::layout::style::{CssToken, FromCss, ParseResult};
+use crate::layout::style::{CssToken, FromCss, MakeComputed, ParseResult};
 
 /// Represents the direction of the grid auto flow.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -20,6 +20,8 @@ pub struct GridAutoFlow {
   /// Whether the grid auto flow is dense.
   pub dense: bool,
 }
+
+impl MakeComputed for GridAutoFlow {}
 
 impl From<GridAutoFlow> for taffy::GridAutoFlow {
   fn from(value: GridAutoFlow) -> Self {

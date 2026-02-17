@@ -1,6 +1,6 @@
 [package]
 name = "takumi"
-version = "0.68.2"
+version = "0.68.3"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Render your React components to images."
@@ -12,7 +12,6 @@ rust-version = "1.89"
 
 [dependencies]
 cssparser = "0.36"
-zeno = "0.3"
 derive_builder = "0.20"
 image-webp = "0.2"
 png = "0.18"
@@ -22,10 +21,16 @@ color = "0.3"
 thiserror = "2.0"
 wide = "1.1"
 unicode-linebreak = "0.1"
+libm = "0.2"
+
+[dependencies.zeno]
+version = "0.3"
+default-features = false
+features = ["libm", "eval"]
 
 [dependencies.xxhash-rust]
 version = "0.8"
-features = ["xxh3", "std"]
+features = ["xxh3"]
 
 [dependencies.fast_image_resize]
 version = "6.0"
@@ -42,12 +47,12 @@ features = ["serde"]
 [dependencies.parley]
 version = "0.7"
 default-features = false
-features = ["std"]
+features = ["libm"]
 
 [dependencies.swash]
 version = "0.2"
 default-features = false
-features = ["std", "scale"]
+features = ["libm", "scale"]
 
 [dependencies.rayon]
 version = "1.10"
@@ -63,7 +68,6 @@ default-features = false
 features = [
   "flexbox",
   "grid",
-  "std",
   "alloc",
   "taffy_tree",
   "strict_provenance",

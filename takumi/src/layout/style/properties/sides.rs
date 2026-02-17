@@ -2,7 +2,10 @@ use cssparser::Parser;
 use std::borrow::Cow;
 use taffy::Rect;
 
-use crate::layout::style::{CssToken, FromCss, Length, ParseResult, merge_enum_values};
+use crate::{
+  layout::style::{CssToken, FromCss, Length, MakeComputed, ParseResult, merge_enum_values},
+  rendering::Sizing,
+};
 
 /// Represents the values for the four sides of a box (top, right, bottom, left).
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -93,6 +96,14 @@ impl<T: Default + Copy> Default for Sides<T> {
 impl<T: Copy> From<T> for Sides<T> {
   fn from(value: T) -> Self {
     Self([value; 4])
+  }
+}
+
+impl<T: Copy + MakeComputed> MakeComputed for Sides<T> {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    for value in &mut self.0 {
+      value.make_computed(sizing);
+    }
   }
 }
 

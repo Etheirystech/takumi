@@ -1,11 +1,13 @@
 use cssparser::{Parser, Token, match_ignore_ascii_case};
 use parley::style::FontStyle as ParleyFontStyle;
 
-use crate::layout::style::{Angle, CssToken, FromCss, ParseResult};
+use crate::layout::style::{Angle, CssToken, FromCss, MakeComputed, ParseResult};
 
 /// Controls the slant (italic/oblique) of text rendering.
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct FontStyle(ParleyFontStyle);
+
+impl MakeComputed for FontStyle {}
 
 impl<'i> FromCss<'i> for FontStyle {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {

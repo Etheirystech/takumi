@@ -3,6 +3,7 @@ use std::ops::{Deref, Neg};
 use cssparser::{Parser, Token};
 
 use crate::layout::style::{
+  MakeComputed,
   properties::{FromCss, ParseResult},
   tw::TailwindPropertyParser,
 };
@@ -15,6 +16,8 @@ use super::CssToken;
 /// where 0.0 corresponds to 0% and 1.0 corresponds to 100%.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PercentageNumber(pub f32);
+
+impl MakeComputed for PercentageNumber {}
 
 impl Default for PercentageNumber {
   fn default() -> Self {

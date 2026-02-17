@@ -97,7 +97,7 @@ pub fn load_image_source_from_bytes(bytes: &[u8]) -> ImageResult {
     use std::str::from_utf8;
 
     if let Ok(text) = from_utf8(bytes)
-      && is_svg(text)
+      && is_svg_like(text)
     {
       return parse_svg_str(text);
     }
@@ -107,9 +107,9 @@ pub fn load_image_source_from_bytes(bytes: &[u8]) -> ImageResult {
   Ok(Arc::new(img.into_rgba8().into()))
 }
 
-/// Check if the bytes are an SVG image.
-pub(crate) fn is_svg(src: &str) -> bool {
-  src.trim_start().starts_with("<svg") && src.contains("xmlns=\"http://www.w3.org/2000/svg\"")
+/// Check if the string looks like an SVG image.
+pub(crate) fn is_svg_like(src: &str) -> bool {
+  src.contains("<svg") && src.contains("xmlns")
 }
 
 #[cfg(feature = "svg")]

@@ -5,7 +5,7 @@ use taffy::{CompactLength, Dimension, LengthPercentage, LengthPercentageAuto};
 
 use crate::{
   layout::style::{
-    AspectRatio, CssToken, FromCss, ParseResult,
+    AspectRatio, CssToken, FromCss, MakeComputed, ParseResult,
     tw::{TW_VAR_SPACING, TailwindPropertyParser},
   },
   rendering::Sizing,
@@ -251,5 +251,13 @@ impl<const DEFAULT_AUTO: bool> Length<DEFAULT_AUTO> {
   /// Resolves the length unit to a `Dimension`.
   pub(crate) fn resolve_to_dimension(self, sizing: &Sizing) -> Dimension {
     self.resolve_to_length_percentage_auto(sizing).into()
+  }
+}
+
+impl<const DEFAULT_AUTO: bool> MakeComputed for Length<DEFAULT_AUTO> {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    if let Self::Em(em) = *self {
+      *self = Self::Px(em * sizing.font_size);
+    }
   }
 }

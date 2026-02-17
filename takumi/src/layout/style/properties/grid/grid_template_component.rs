@@ -1,6 +1,7 @@
 use cssparser::Parser;
 
-use crate::layout::style::{CssToken, FromCss, ParseResult};
+use crate::layout::style::{CssToken, FromCss, MakeComputed, ParseResult};
+use crate::rendering::Sizing;
 
 use super::{GridRepeatTrack, GridRepetitionCount, GridTrackSize};
 
@@ -20,6 +21,20 @@ pub enum GridTemplateComponent {
   /// Automatically generate grid tracks to fit the available space using the specified definite track lengths
   /// Only valid if every track in template (not just the repetition) has a fixed size.
   Repeat(GridRepetitionCount, Vec<GridRepeatTrack>),
+}
+
+impl MakeComputed for GridTemplateComponent {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    match self {
+      GridTemplateComponent::Single(size) => size.make_computed(sizing),
+      GridTemplateComponent::Repeat(_, tracks) => {
+        for track in tracks.iter_mut() {
+          track.make_computed(sizing);
+        }
+      }
+      _ => {}
+    }
+  }
 }
 
 impl<'i> FromCss<'i> for GridTemplateComponent {

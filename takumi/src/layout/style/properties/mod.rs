@@ -14,10 +14,12 @@ mod border;
 mod box_shadow;
 mod clip_path;
 mod color;
+mod conic_gradient;
 mod filter;
 mod flex;
 mod flex_grow;
 mod font_feature_settings;
+mod font_stretch;
 mod font_style;
 mod font_variation_settings;
 mod font_weight;
@@ -56,11 +58,13 @@ pub use border::*;
 pub use box_shadow::*;
 pub use clip_path::*;
 pub use color::*;
+pub use conic_gradient::*;
 use fast_image_resize::ResizeAlg;
 pub use filter::*;
 pub use flex::*;
 pub use flex_grow::*;
 pub use font_feature_settings::*;
+pub use font_stretch::*;
 pub use font_style::*;
 pub use font_variation_settings::*;
 pub use font_weight::*;
@@ -96,6 +100,7 @@ use parley::{Alignment, FontStack};
 use zeno::Join;
 
 use crate::layout::style::tw::TailwindPropertyParser;
+use crate::rendering::Sizing;
 
 /// Parser result type alias for CSS property parsers.
 pub type ParseResult<'i, T> = Result<T, ParseError<'i, Cow<'i, str>>>;
@@ -162,6 +167,36 @@ pub trait FromCss<'i> {
   }
 }
 
+/// Converts a parsed/inherited value into a computed value for the current node context.
+pub(crate) trait MakeComputed {
+  /// Default no-op for types that do not need computed-value normalization.
+  fn make_computed(&mut self, _sizing: &Sizing) {}
+}
+
+impl<T: MakeComputed> MakeComputed for Option<T> {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    if let Some(value) = self.as_mut() {
+      value.make_computed(sizing);
+    }
+  }
+}
+
+impl<T: MakeComputed> MakeComputed for Box<[T]> {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    for value in self.iter_mut() {
+      value.make_computed(sizing);
+    }
+  }
+}
+
+impl<T: MakeComputed> MakeComputed for Vec<T> {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    for value in self.iter_mut() {
+      value.make_computed(sizing);
+    }
+  }
+}
+
 fn create_unexpected_token_error<'i>(
   location: SourceLocation,
   token: &Token,
@@ -221,6 +256,8 @@ macro_rules! declare_enum_from_css_impl {
     $enum_type:ty,
     $($css_value:expr => $variant:expr),* $(,)?
   ) => {
+    impl crate::layout::style::MakeComputed for $enum_type {}
+
     impl<'i> crate::layout::style::FromCss<'i> for $enum_type {
       fn valid_tokens() -> &'static [crate::layout::style::CssToken] {
         &[$(crate::layout::style::CssToken::Keyword($css_value)),*]
@@ -322,6 +359,12 @@ impl TailwindPropertyParser for BackgroundClip {
 /// Each corner has independent horizontal and vertical radii, allowing for both circular and elliptical shapes.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BorderRadius(pub Sides<SpacePair<Length<false>>>);
+
+impl MakeComputed for BorderRadius {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.0.make_computed(sizing);
+  }
+}
 
 impl<'i> FromCss<'i> for BorderRadius {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
@@ -783,6 +826,8 @@ declare_enum_from_css_impl!(
 /// Multi value fallback is supported.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FontFamily(String);
+
+impl MakeComputed for FontFamily {}
 
 impl<'i> FromCss<'i> for FontFamily {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {

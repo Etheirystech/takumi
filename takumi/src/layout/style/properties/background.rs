@@ -1,6 +1,7 @@
 use cssparser::Parser;
 
 use crate::layout::style::*;
+use crate::rendering::Sizing;
 
 /// Parsed `background` shorthand value.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -19,6 +20,14 @@ pub struct Background {
   pub clip: BackgroundClip,
   /// Background blend mode.
   pub blend_mode: BlendMode,
+}
+
+impl MakeComputed for Background {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.image.make_computed(sizing);
+    self.position.make_computed(sizing);
+    self.size.make_computed(sizing);
+  }
 }
 
 impl<'i> FromCss<'i> for Background {

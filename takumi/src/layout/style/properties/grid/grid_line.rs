@@ -1,8 +1,9 @@
 use cssparser::Parser;
 
 use crate::layout::style::{
-  CssToken, FromCss, GridPlacementSpan, ParseResult, tw::TailwindPropertyParser,
+  CssToken, FromCss, GridPlacementSpan, MakeComputed, ParseResult, tw::TailwindPropertyParser,
 };
+use crate::rendering::Sizing;
 
 use super::GridPlacement;
 
@@ -13,6 +14,13 @@ pub struct GridLine {
   pub start: GridPlacement,
   /// The end line placement
   pub end: GridPlacement,
+}
+
+impl MakeComputed for GridLine {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.start.make_computed(sizing);
+    self.end.make_computed(sizing);
+  }
 }
 
 impl GridLine {

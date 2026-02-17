@@ -1,7 +1,11 @@
 use cssparser::{Parser, Token};
 
-use crate::layout::style::{
-  CssToken, FromCss, ParseResult, declare_enum_from_css_impl, properties::ColorInput,
+use crate::{
+  layout::style::{
+    CssToken, FromCss, MakeComputed, ParseResult, declare_enum_from_css_impl,
+    properties::ColorInput,
+  },
+  rendering::Sizing,
 };
 
 /// Represents text decoration line options.
@@ -58,6 +62,14 @@ pub struct TextDecoration {
   pub style: Option<TextDecorationStyle>,
   /// Optional text decoration color.
   pub color: Option<ColorInput>,
+}
+
+impl MakeComputed for TextDecorationStyle {}
+
+impl MakeComputed for TextDecoration {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.color.make_computed(sizing);
+  }
 }
 
 impl<'i> FromCss<'i> for TextDecoration {

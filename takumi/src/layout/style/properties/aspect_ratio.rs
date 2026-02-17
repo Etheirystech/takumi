@@ -1,6 +1,8 @@
 use cssparser::Parser;
 
-use crate::layout::style::{CssToken, FromCss, ParseResult, tw::TailwindPropertyParser};
+use crate::layout::style::{
+  CssToken, FromCss, MakeComputed, ParseResult, tw::TailwindPropertyParser,
+};
 
 #[derive(Default, Debug, Clone, Copy, PartialEq)]
 /// Represents a aspect ratio.
@@ -11,6 +13,8 @@ pub enum AspectRatio {
   /// The aspect ratio is a fixed ratio.
   Ratio(f32),
 }
+
+impl MakeComputed for AspectRatio {}
 
 impl TailwindPropertyParser for AspectRatio {
   fn parse_tw(token: &str) -> Option<Self> {

@@ -9,7 +9,7 @@ use cssparser::{
 use image::Rgba;
 
 use crate::{
-  layout::style::{CssToken, FromCss, ParseResult, tw::TailwindPropertyParser},
+  layout::style::{CssToken, FromCss, MakeComputed, ParseResult, tw::TailwindPropertyParser},
   rendering::fast_div_255,
 };
 
@@ -25,6 +25,8 @@ pub enum ColorInput<const DEFAULT_CURRENT_COLOR: bool = true> {
   /// A color value.
   Value(Color),
 }
+
+impl<const DEFAULT_CURRENT_COLOR: bool> MakeComputed for ColorInput<DEFAULT_CURRENT_COLOR> {}
 
 impl<const DEFAULT_CURRENT_COLOR: bool> Default for ColorInput<DEFAULT_CURRENT_COLOR> {
   fn default() -> Self {

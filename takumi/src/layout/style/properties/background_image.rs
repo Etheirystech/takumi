@@ -3,9 +3,10 @@ use std::sync::Arc;
 use cssparser::{Parser, Token, match_ignore_ascii_case};
 
 use crate::layout::style::{
-  CssToken, FromCss, LinearGradient, NoiseV1, ParseResult, RadialGradient,
-  tw::TailwindPropertyParser,
+  ConicGradient, CssToken, FromCss, LinearGradient, MakeComputed, NoiseV1, ParseResult,
+  RadialGradient, tw::TailwindPropertyParser,
 };
+use crate::rendering::Sizing;
 
 /// Background image variants supported by Takumi.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -17,10 +18,23 @@ pub enum BackgroundImage {
   Linear(LinearGradient),
   /// CSS radial-gradient(...)
   Radial(RadialGradient),
+  /// CSS conic-gradient(...)
+  Conic(ConicGradient),
   /// Custom noise-v1(...)
   Noise(NoiseV1),
   /// Load external image resource.
   Url(Arc<str>),
+}
+
+impl MakeComputed for BackgroundImage {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    match self {
+      BackgroundImage::Linear(gradient) => gradient.make_computed(sizing),
+      BackgroundImage::Radial(gradient) => gradient.make_computed(sizing),
+      BackgroundImage::Conic(gradient) => gradient.make_computed(sizing),
+      _ => {}
+    }
+  }
 }
 
 impl TailwindPropertyParser for BackgroundImage {
@@ -54,6 +68,7 @@ impl<'i> FromCss<'i> for BackgroundImage {
     match_ignore_ascii_case! {&function,
       "linear-gradient" => Ok(BackgroundImage::Linear(LinearGradient::from_css(input)?)),
       "radial-gradient" => Ok(BackgroundImage::Radial(RadialGradient::from_css(input)?)),
+      "conic-gradient" => Ok(BackgroundImage::Conic(ConicGradient::from_css(input)?)),
       "noise-v1" => Ok(BackgroundImage::Noise(NoiseV1::from_css(input)?)),
       _ => Err(Self::unexpected_token_error(location, &Token::Function(function))),
     }
@@ -64,6 +79,7 @@ impl<'i> FromCss<'i> for BackgroundImage {
       CssToken::Token("url()"),
       CssToken::Token("linear-gradient()"),
       CssToken::Token("radial-gradient()"),
+      CssToken::Token("conic-gradient()"),
       CssToken::Token("noise-v1()"),
       CssToken::Keyword("none"),
     ]

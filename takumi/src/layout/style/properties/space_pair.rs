@@ -3,7 +3,9 @@ use std::borrow::Cow;
 use taffy::{LengthPercentage, Point, Size};
 
 use crate::{
-  layout::style::{CssToken, FromCss, Length, Overflow, ParseResult, merge_enum_values},
+  layout::style::{
+    CssToken, FromCss, Length, MakeComputed, Overflow, ParseResult, merge_enum_values,
+  },
   rendering::Sizing,
 };
 
@@ -71,6 +73,13 @@ impl<T: Copy, const Y_FIRST: bool> SpacePair<T, Y_FIRST> {
         y: second,
       }
     }
+  }
+}
+
+impl<T: Copy + MakeComputed, const Y_FIRST: bool> MakeComputed for SpacePair<T, Y_FIRST> {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.x.make_computed(sizing);
+    self.y.make_computed(sizing);
   }
 }
 

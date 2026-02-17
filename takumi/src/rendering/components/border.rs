@@ -295,7 +295,7 @@ impl BorderProperties {
         height: placement.height,
       },
       BlendMode::Normal,
-      canvas.constrains.last(),
+      &canvas.constrains,
       |x, y| {
         let alpha = mask[mask_index_from_coord(x, y, placement.width)];
 

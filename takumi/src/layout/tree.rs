@@ -119,7 +119,8 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
   }
 
   fn from_node_impl(parent_context: &RenderContext<'g>, mut node: N) -> Self {
-    let style = node.create_inherited_style(&parent_context.style, parent_context.sizing.viewport);
+    let mut style =
+      node.create_inherited_style(&parent_context.style, parent_context.sizing.viewport);
 
     let font_size = style
       .font_size
@@ -128,14 +129,18 @@ impl<'g, N: Node<N>> NodeTree<'g, N> {
 
     let current_color = style.color.resolve(parent_context.current_color);
 
+    let sizing = Sizing {
+      font_size,
+      ..parent_context.sizing
+    };
+
+    style.make_computed(&sizing);
+
     let mut context = RenderContext {
       style,
       current_color,
       fetched_resources: parent_context.fetched_resources.clone(),
-      sizing: Sizing {
-        font_size,
-        ..parent_context.sizing
-      },
+      sizing,
       ..*parent_context
     };
 

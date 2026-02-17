@@ -1,6 +1,7 @@
 use cssparser::Parser;
 
-use crate::layout::style::{CssToken, FromCss, GridTrackSize, ParseResult};
+use crate::layout::style::{CssToken, FromCss, GridTrackSize, MakeComputed, ParseResult};
+use crate::rendering::Sizing;
 
 /// Represents a grid repeat track
 #[derive(Debug, Clone, PartialEq)]
@@ -12,6 +13,12 @@ pub struct GridRepeatTrack {
   /// The names for the final line after the last track within the repeat() clause
   /// Only set on the last track of the repeat fragment. For other tracks this is None.
   pub end_names: Option<Vec<String>>,
+}
+
+impl MakeComputed for GridRepeatTrack {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.size.make_computed(sizing);
+  }
 }
 
 impl<'i> FromCss<'i> for GridRepeatTrack {

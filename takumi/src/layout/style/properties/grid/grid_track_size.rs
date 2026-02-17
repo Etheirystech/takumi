@@ -3,7 +3,8 @@ use taffy::{MaxTrackSizingFunction, MinTrackSizingFunction, TrackSizingFunction}
 
 use crate::{
   layout::style::{
-    CssToken, FromCss, GridLength, GridMinMaxSize, Length, ParseResult, tw::TailwindPropertyParser,
+    CssToken, FromCss, GridLength, GridMinMaxSize, Length, MakeComputed, ParseResult,
+    tw::TailwindPropertyParser,
   },
   rendering::Sizing,
 };
@@ -93,6 +94,15 @@ impl<'i> FromCss<'i> for GridTrackSize {
 
   fn valid_tokens() -> &'static [CssToken] {
     &[CssToken::Token("minmax()"), CssToken::Token("length")]
+  }
+}
+
+impl MakeComputed for GridTrackSize {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    match self {
+      GridTrackSize::MinMax(min_max) => min_max.make_computed(sizing),
+      GridTrackSize::Fixed(length) => length.make_computed(sizing),
+    }
   }
 }
 

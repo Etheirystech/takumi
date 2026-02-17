@@ -414,7 +414,7 @@ fn render_node<'g, Nodes: Node<Nodes>>(
       Affine::IDENTITY,
       ImageScalingAlgorithm::Auto,
       mix_blend_mode,
-      None,
+      &[],
       &mut canvas.mask_memory,
     );
 

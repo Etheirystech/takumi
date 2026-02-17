@@ -4,7 +4,8 @@ use zeno::{Fill, PathBuilder, PathData, Placement};
 
 use crate::{
   layout::style::{
-    Axis, Color, CssToken, FromCss, ImageScalingAlgorithm, Length, ParseResult, Sides, SpacePair,
+    Axis, Color, CssToken, FromCss, ImageScalingAlgorithm, Length, MakeComputed, ParseResult,
+    Sides, SpacePair,
   },
   rendering::{BorderProperties, MaskMemory, RenderContext, Sizing},
 };
@@ -20,6 +21,8 @@ pub enum FillRule {
   /// Counts the total number of crossings - if even, the point is outside
   EvenOdd,
 }
+
+impl MakeComputed for FillRule {}
 
 impl From<FillRule> for Fill {
   fn from(value: FillRule) -> Self {
@@ -42,9 +45,23 @@ pub enum ShapeRadius {
   Length(Length),
 }
 
+impl MakeComputed for ShapeRadius {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    if let ShapeRadius::Length(length) = self {
+      length.make_computed(sizing);
+    }
+  }
+}
+
 /// Represents a position for circle() and ellipse() functions.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ShapePosition(pub SpacePair<Length>);
+
+impl MakeComputed for ShapePosition {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.0.make_computed(sizing);
+  }
+}
 
 impl Default for ShapePosition {
   fn default() -> Self {
@@ -64,6 +81,13 @@ pub struct InsetShape {
   pub border_radius: Option<Sides<Length>>,
 }
 
+impl MakeComputed for InsetShape {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.inset.make_computed(sizing);
+    self.border_radius.make_computed(sizing);
+  }
+}
+
 /// Represents a circle() shape.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CircleShape {
@@ -71,6 +95,13 @@ pub struct CircleShape {
   pub radius: ShapeRadius,
   /// The center position of the circle
   pub position: ShapePosition,
+}
+
+impl MakeComputed for CircleShape {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.radius.make_computed(sizing);
+    self.position.make_computed(sizing);
+  }
 }
 
 /// Represents an ellipse() shape.
@@ -84,6 +115,14 @@ pub struct EllipseShape {
   pub position: ShapePosition,
 }
 
+impl MakeComputed for EllipseShape {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.radius_x.make_computed(sizing);
+    self.radius_y.make_computed(sizing);
+    self.position.make_computed(sizing);
+  }
+}
+
 /// Represents a single coordinate pair in a polygon.
 pub type PolygonCoordinate = SpacePair<Length>;
 
@@ -94,6 +133,12 @@ pub struct PolygonShape {
   pub fill_rule: Option<FillRule>,
   /// List of coordinate pairs defining the polygon vertices
   pub coordinates: Box<[PolygonCoordinate]>,
+}
+
+impl MakeComputed for PolygonShape {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.coordinates.make_computed(sizing);
+  }
 }
 
 /// Represents a path() shape using an SVG path string.
@@ -116,6 +161,17 @@ pub enum BasicShape {
   Polygon(PolygonShape),
   /// path() function
   Path(PathShape),
+}
+
+impl MakeComputed for BasicShape {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    match self {
+      BasicShape::Inset(shape) => shape.make_computed(sizing),
+      BasicShape::Ellipse(shape) => shape.make_computed(sizing),
+      BasicShape::Polygon(shape) => shape.make_computed(sizing),
+      BasicShape::Path(_) => {}
+    }
+  }
 }
 
 fn resolve_radius(radius: ShapeRadius, distance: Size<f32>, sizing: &Sizing, full: f32) -> f32 {

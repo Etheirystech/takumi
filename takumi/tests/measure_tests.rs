@@ -78,7 +78,7 @@ fn test_measure_text_node() {
     result,
     MeasuredNode {
       width: 300.0,
-      height: 24.0,
+      height: 26.0,
       transform: Affine::IDENTITY.to_cols_array(),
       children: Vec::new(),
       runs: Vec::new(), // it's a block node, so no runs!
@@ -181,7 +181,7 @@ fn test_measure_inline_layout() {
         MeasuredTextRun {
           text: "Speaking".to_string(),
           x: 0.0,
-          y: 126.9,
+          y: 127.9,
           width: 85.71999,
           height: 26.0,
         },

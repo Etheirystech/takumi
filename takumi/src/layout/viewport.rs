@@ -3,9 +3,6 @@ use taffy::{AvailableSpace, Size};
 /// The default font size in pixels.
 pub const DEFAULT_FONT_SIZE: f32 = 16.0;
 
-/// The default line height multiplier.
-pub const DEFAULT_LINE_HEIGHT_SCALER: f32 = 1.2;
-
 /// The default device pixel ratio.
 pub const DEFAULT_DEVICE_PIXEL_RATIO: f32 = 1.0;
 

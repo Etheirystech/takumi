@@ -1,7 +1,10 @@
 use cssparser::{Parser, match_ignore_ascii_case};
 
-use crate::layout::style::{
-  AspectRatio, CssToken, FromCss, Length, ParseResult, tw::TailwindPropertyParser,
+use crate::{
+  layout::style::{
+    AspectRatio, CssToken, FromCss, Length, MakeComputed, ParseResult, tw::TailwindPropertyParser,
+  },
+  rendering::Sizing,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -125,6 +128,12 @@ impl<'i> FromCss<'i> for Flex {
       CssToken::Token("number"),
       CssToken::Token("length"),
     ]
+  }
+}
+
+impl MakeComputed for Flex {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.basis.make_computed(sizing);
   }
 }
 

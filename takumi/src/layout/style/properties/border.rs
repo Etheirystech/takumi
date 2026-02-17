@@ -1,7 +1,11 @@
 use cssparser::Parser;
 
-use crate::layout::style::{
-  ColorInput, CssToken, FromCss, ParseResult, declare_enum_from_css_impl, properties::Length,
+use crate::{
+  layout::style::{
+    ColorInput, CssToken, FromCss, MakeComputed, ParseResult, declare_enum_from_css_impl,
+    properties::Length,
+  },
+  rendering::Sizing,
 };
 
 /// Represents border style options (currently only solid is supported).
@@ -72,6 +76,12 @@ impl<'i> FromCss<'i> for Border {
       CssToken::Token("border-style"),
       CssToken::Token("color"),
     ]
+  }
+}
+
+impl MakeComputed for Border {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.width.make_computed(sizing);
   }
 }
 

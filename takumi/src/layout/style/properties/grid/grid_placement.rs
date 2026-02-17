@@ -1,6 +1,8 @@
 use cssparser::{Parser, Token};
 
-use crate::layout::style::{CssToken, FromCss, ParseResult, tw::TailwindPropertyParser};
+use crate::layout::style::{
+  CssToken, FromCss, MakeComputed, ParseResult, tw::TailwindPropertyParser,
+};
 
 /// Represents a grid placement with serde support
 #[derive(Debug, Clone, PartialEq)]
@@ -14,6 +16,8 @@ pub enum GridPlacement {
   /// Named grid area
   Named(String),
 }
+
+impl MakeComputed for GridPlacement {}
 
 impl Default for GridPlacement {
   fn default() -> Self {

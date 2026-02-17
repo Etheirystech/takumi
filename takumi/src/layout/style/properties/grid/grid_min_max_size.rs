@@ -1,6 +1,9 @@
 use cssparser::Parser;
 
-use crate::layout::style::{CssToken, FromCss, GridLength, ParseResult};
+use crate::{
+  layout::style::{CssToken, FromCss, GridLength, MakeComputed, ParseResult},
+  rendering::Sizing,
+};
 
 /// Represents a grid minmax()
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,5 +27,12 @@ impl<'i> FromCss<'i> for GridMinMaxSize {
 
   fn valid_tokens() -> &'static [CssToken] {
     &[CssToken::Token("minmax()")]
+  }
+}
+
+impl MakeComputed for GridMinMaxSize {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.min.make_computed(sizing);
+    self.max.make_computed(sizing);
   }
 }

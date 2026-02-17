@@ -1,14 +1,13 @@
 use cssparser::Parser;
 use image::{GenericImageView, Rgba};
-use smallvec::SmallVec;
 
 use super::gradient_utils::{adaptive_lut_size, build_color_lut, resolve_stops_along_axis};
 use crate::{
   layout::style::{
-    BackgroundPosition, CssToken, FromCss, GradientStop, Length, ParseResult, ResolvedGradientStop,
-    declare_enum_from_css_impl,
+    BackgroundPosition, CssToken, FromCss, GradientStop, GradientStops, Length, MakeComputed,
+    ParseResult, declare_enum_from_css_impl,
   },
-  rendering::RenderContext,
+  rendering::{RenderContext, Sizing},
 };
 
 /// Represents a radial gradient.
@@ -22,6 +21,13 @@ pub struct RadialGradient {
   pub center: BackgroundPosition,
   /// Gradient stops
   pub stops: Box<[GradientStop]>,
+}
+
+impl MakeComputed for RadialGradient {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.center.make_computed(sizing);
+    self.stops.make_computed(sizing);
+  }
 }
 
 /// Supported shapes for radial gradients
@@ -64,7 +70,7 @@ declare_enum_from_css_impl!(
 
 /// Precomputed drawing context for repeated sampling of a `RadialGradient`.
 #[derive(Debug, Clone)]
-pub struct RadialGradientTile {
+pub(crate) struct RadialGradientTile {
   /// Target width in pixels.
   pub width: u32,
   /// Target height in pixels.
@@ -77,10 +83,6 @@ pub struct RadialGradientTile {
   pub radius_x: f32,
   /// Radius Y in pixels (for circle, equals radius_x)
   pub radius_y: f32,
-  /// Scale component used for stop resolution.
-  pub radius_scale: f32,
-  /// Resolved and ordered color stops.
-  pub resolved_stops: SmallVec<[ResolvedGradientStop; 4]>,
   /// Pre-computed color lookup table for fast gradient sampling.
   /// Maps normalized distance [0.0, 1.0] from center to color.
   pub color_lut: Box<[Rgba<u8>]>,
@@ -162,9 +164,20 @@ impl RadialGradientTile {
         let r = dx_left.min(dx_right).min(dy_top.min(dy_bottom));
         (r, r)
       }
-      // For corner sizes, use farthest-corner as sensible default
       (RadialShape::Ellipse, RadialSize::ClosestCorner) => {
-        (dx_left.max(dx_right), dy_top.max(dy_bottom))
+        let f_rx = dx_left.max(dx_right);
+        let f_ry = dy_top.max(dy_bottom);
+        let corners = [
+          (dx_left, dy_top),
+          (dx_right, dy_top),
+          (dx_left, dy_bottom),
+          (dx_right, dy_bottom),
+        ];
+        let distances = corners.map(|(dx, dy)| (dx * dx + dy * dy).sqrt());
+        let dist_to_closest_corner = distances.iter().fold(f32::INFINITY, |a, &b| a.min(b));
+        let dist_to_farthest_corner = distances.iter().fold(0.0f32, |a, &b| a.max(b));
+        let ratio = dist_to_closest_corner / dist_to_farthest_corner.max(1e-6);
+        (f_rx * ratio, f_ry * ratio)
       }
       (RadialShape::Circle, RadialSize::ClosestCorner) => {
         let candidates = [
@@ -195,8 +208,6 @@ impl RadialGradientTile {
       cy,
       radius_x,
       radius_y,
-      radius_scale,
-      resolved_stops,
       color_lut,
     }
   }
@@ -232,14 +243,7 @@ impl<'i> FromCss<'i> for RadialGradient {
         break;
       }
 
-      // Parse at least one stop, comma-separated
-      let mut stops = Vec::new();
-
-      stops.push(GradientStop::from_css(input)?);
-
-      while input.try_parse(Parser::expect_comma).is_ok() {
-        stops.push(GradientStop::from_css(input)?);
-      }
+      let stops = GradientStops::from_css(input)?;
 
       Ok(RadialGradient {
         shape,
@@ -354,8 +358,8 @@ mod tests {
         shape: RadialShape::Ellipse,
         size: RadialSize::FarthestCorner,
         center: BackgroundPosition(SpacePair::from_pair(
-          PositionComponent::Length(Length::Percentage(25.0)),
-          PositionComponent::Length(Length::Percentage(70.0)),
+          Length::Percentage(25.0).into(),
+          Length::Percentage(70.0).into(),
         )),
         stops: [
           GradientStop::ColorHint {
@@ -534,5 +538,41 @@ mod tests {
     // Far outside (200, 200) should be clamped to blue
     let color_far = tile.get_pixel(200, 200);
     assert_eq!(color_far, Rgba([0, 0, 255, 255]));
+  }
+
+  #[test]
+  fn test_radial_gradient_ellipse_closest_corner() {
+    let gradient = RadialGradient {
+      shape: RadialShape::Ellipse,
+      size: RadialSize::ClosestCorner,
+      center: BackgroundPosition(SpacePair::from_pair(
+        Length::Px(20.0).into(),
+        Length::Px(20.0).into(),
+      )),
+      stops: [
+        GradientStop::ColorHint {
+          color: Color::black().into(),
+          hint: Some(StopPosition(Length::Percentage(0.0))),
+        },
+        GradientStop::ColorHint {
+          color: Color::white().into(),
+          hint: Some(StopPosition(Length::Percentage(100.0))),
+        },
+      ]
+      .into(),
+    };
+
+    let context = GlobalContext::default();
+    let dummy_context = RenderContext::new(&context, (100, 100).into(), Default::default());
+    let tile = RadialGradientTile::new(&gradient, 100, 100, &dummy_context);
+
+    // dx_left=20, dx_right=80, dy_top=20, dy_bottom=80
+    // f_rx = 80, f_ry = 80
+    // d_closest = sqrt(20^2 + 20^2)
+    // d_farthest = sqrt(80^2 + 80^2)
+    // ratio = d_closest / d_farthest = 20/80 = 0.25
+    // radius_x = 80 * 0.25 = 20
+    assert!((tile.radius_x - 20.0).abs() < 1e-3);
+    assert!((tile.radius_y - 20.0).abs() < 1e-3);
   }
 }

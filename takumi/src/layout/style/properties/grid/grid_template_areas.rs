@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use cssparser::{Parser, Token};
 
-use crate::layout::style::{CssToken, FromCss, ParseResult};
+use crate::layout::style::{CssToken, FromCss, MakeComputed, ParseResult};
 
 /// Represents `grid-template-areas` value
 ///
@@ -10,6 +10,8 @@ use crate::layout::style::{CssToken, FromCss, ParseResult};
 /// like: "a a ." "b b c"
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct GridTemplateAreas(pub Vec<Vec<String>>);
+
+impl MakeComputed for GridTemplateAreas {}
 
 impl From<GridTemplateAreas> for Vec<taffy::GridTemplateArea<String>> {
   fn from(value: GridTemplateAreas) -> Self {

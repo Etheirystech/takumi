@@ -1,6 +1,6 @@
 use cssparser::{Parser, match_ignore_ascii_case};
 
-use crate::layout::style::{CssToken, FromCss, ParseResult};
+use crate::layout::style::{CssToken, FromCss, MakeComputed, ParseResult};
 
 /// Defines how text should be overflowed.
 ///
@@ -15,6 +15,8 @@ pub enum TextOverflow {
   /// Text is truncated with a custom string at the end when it overflows
   Custom(String),
 }
+
+impl MakeComputed for TextOverflow {}
 
 impl<'i> FromCss<'i> for TextOverflow {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {

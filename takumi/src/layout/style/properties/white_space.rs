@@ -1,7 +1,8 @@
 use cssparser::{Parser, Token, match_ignore_ascii_case};
 
 use crate::layout::style::{
-  CssToken, FromCss, ParseResult, TextWrapMode, WhiteSpaceCollapse, tw::TailwindPropertyParser,
+  CssToken, FromCss, MakeComputed, ParseResult, TextWrapMode, WhiteSpaceCollapse,
+  tw::TailwindPropertyParser,
 };
 
 /// Controls how whitespace should be handled.
@@ -12,6 +13,8 @@ pub struct WhiteSpace {
   /// Controls how whitespace should be collapsed.
   pub white_space_collapse: WhiteSpaceCollapse,
 }
+
+impl MakeComputed for WhiteSpace {}
 
 impl TailwindPropertyParser for WhiteSpace {
   fn parse_tw(token: &str) -> Option<Self> {

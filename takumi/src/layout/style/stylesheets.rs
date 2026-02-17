@@ -1,7 +1,7 @@
 use std::{borrow::Cow, marker::PhantomData};
 
 use derive_builder::Builder;
-use parley::{FontSettings, FontStack, FontWidth, TextStyle};
+use parley::{FontSettings, FontStack, TextStyle};
 use serde::Deserialize;
 use smallvec::SmallVec;
 use taffy::{Point, Size, prelude::FromLength};
@@ -50,6 +50,14 @@ macro_rules! define_style {
     #[derive(Clone, Debug, Default)]
     pub struct InheritedStyle {
       $( pub(crate) $property: $type, )*
+    }
+
+    impl InheritedStyle {
+      pub(crate) fn make_computed_values(&mut self, sizing: &Sizing) {
+        $(
+          self.$property.make_computed(sizing);
+        )*
+      }
     }
   };
 }
@@ -155,6 +163,7 @@ define_style!(
   text_overflow: TextOverflow,
   text_transform: TextTransform where inherit = true,
   font_style: FontStyle where inherit = true,
+  font_stretch: FontStretch where inherit = true,
   border_color: Option<ColorInput>,
   color: ColorInput where inherit = true,
   filter: Filters,
@@ -257,7 +266,7 @@ impl<'s> From<&'s SizedFontStyle<'s>> for TextStyle<'s, InlineBrush> {
       },
       text_wrap_mode: style.parent.text_wrap_mode_and_line_clamp().0.into(),
 
-      font_width: FontWidth::NORMAL,
+      font_width: style.parent.font_stretch.into(),
       locale: None,
       has_underline: false,
       underline_offset: None,
@@ -272,6 +281,20 @@ impl<'s> From<&'s SizedFontStyle<'s>> for TextStyle<'s, InlineBrush> {
 }
 
 impl InheritedStyle {
+  /// Normalize inheritable text-related values to computed values for this node.
+  pub(crate) fn make_computed(&mut self, sizing: &Sizing) {
+    // `font-size` computed value is already resolved in `sizing.font_size`.
+    // Keep it as css-px in style to avoid re-resolving descendant inheritance.
+    let dpr = sizing.viewport.device_pixel_ratio;
+    self.font_size = Some(if dpr > 0.0 {
+      Length::Px(sizing.font_size / dpr)
+    } else {
+      Length::Px(sizing.font_size)
+    });
+
+    self.make_computed_values(sizing);
+  }
+
   pub(crate) fn is_invisible(&self) -> bool {
     self.opacity.0 == 0.0 || self.display == Display::None || self.visibility == Visibility::Hidden
   }
@@ -919,5 +942,53 @@ mod tests {
         ellipsis: Some("…".to_string()),
       }))
     );
+  }
+
+  #[test]
+  fn test_inherited_em_text_lengths_are_computed_once() {
+    let mut parent = Style {
+      font_size: Some(Length::Em(2.0)).into(),
+      letter_spacing: Some(Length::Em(1.0)).into(),
+      line_height: LineHeight::Length(Length::Em(1.5)).into(),
+      ..Default::default()
+    }
+    .inherit(&InheritedStyle::default());
+    parent.make_computed(&Sizing {
+      viewport: Viewport::new(Some(1200), Some(630)),
+      font_size: 32.0,
+    });
+
+    let inherited_child = Style::default().inherit(&parent);
+    let inherited_child_sizing = Sizing {
+      viewport: Viewport::new(Some(1200), Some(630)),
+      font_size: 32.0,
+    };
+    let inherited_font_size = inherited_child
+      .font_size
+      .map(|size| size.to_px(&inherited_child_sizing, inherited_child_sizing.font_size))
+      .unwrap_or_default();
+    assert_eq!(inherited_font_size, 32.0);
+
+    let child_with_own_font_size = Style {
+      font_size: Some(Length::Px(10.0)).into(),
+      ..Default::default()
+    }
+    .inherit(&parent);
+    let child_sizing = Sizing {
+      viewport: Viewport::new(Some(1200), Some(630)),
+      font_size: 10.0,
+    };
+
+    let inherited_letter_spacing = child_with_own_font_size
+      .letter_spacing
+      .map(|v| v.to_px(&child_sizing, child_sizing.font_size))
+      .unwrap_or_default();
+    assert_eq!(inherited_letter_spacing, 32.0);
+
+    let inherited_line_height = match child_with_own_font_size.line_height {
+      LineHeight::Length(length) => length.to_px(&child_sizing, child_sizing.font_size),
+      _ => 0.0,
+    };
+    assert_eq!(inherited_line_height, 48.0);
   }
 }

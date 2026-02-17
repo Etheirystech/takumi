@@ -193,8 +193,8 @@ fn test_style_object_position_percentage_25_75() {
         .height(Percentage(100.0))
         .object_fit(ObjectFit::Contain)
         .object_position(BackgroundPosition(SpacePair::from_pair(
-          PositionComponent::Length(Percentage(25.0)),
-          PositionComponent::Length(Percentage(75.0)),
+          Percentage(25.0).into(),
+          Percentage(75.0).into(),
         )))
         .build()
         .unwrap(),

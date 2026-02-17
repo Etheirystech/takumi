@@ -1,13 +1,15 @@
 use cssparser::Parser;
 use parley::FontVariation;
 
-use crate::layout::style::{CssToken, FromCss, ParseResult};
+use crate::layout::style::{CssToken, FromCss, MakeComputed, ParseResult};
 
 /// Controls variable font axis values via CSS font-variation-settings property.
 ///
 /// This allows fine-grained control over variable font characteristics like weight,
 /// width, slant, and other custom axes defined in the font.
 pub type FontVariationSettings = Box<[FontVariation]>;
+
+impl MakeComputed for FontVariationSettings {}
 
 impl<'i> FromCss<'i> for FontVariationSettings {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {

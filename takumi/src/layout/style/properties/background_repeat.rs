@@ -1,6 +1,8 @@
 use cssparser::{Parser, match_ignore_ascii_case};
 
-use crate::layout::style::{CssToken, FromCss, ParseResult, declare_enum_from_css_impl};
+use crate::layout::style::{
+  CssToken, FromCss, MakeComputed, ParseResult, declare_enum_from_css_impl,
+};
 
 /// Per-axis repeat style.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
@@ -27,6 +29,8 @@ declare_enum_from_css_impl!(
 /// Combined repeat for X and Y axes.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct BackgroundRepeat(pub BackgroundRepeatStyle, pub BackgroundRepeatStyle);
+
+impl MakeComputed for BackgroundRepeat {}
 
 impl BackgroundRepeat {
   /// Returns a repeat value that tiles on both the X and Y axes.

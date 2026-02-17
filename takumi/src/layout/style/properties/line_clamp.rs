@@ -1,6 +1,8 @@
 use cssparser::Parser;
 
-use crate::layout::style::{CssToken, FromCss, ParseResult, tw::TailwindPropertyParser};
+use crate::layout::style::{
+  CssToken, FromCss, MakeComputed, ParseResult, tw::TailwindPropertyParser,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 /// Represents a line clamp value.
@@ -10,6 +12,8 @@ pub struct LineClamp {
   /// The ellipsis character to use when the text is clamped.
   pub ellipsis: Option<String>,
 }
+
+impl MakeComputed for LineClamp {}
 
 impl TailwindPropertyParser for LineClamp {
   fn parse_tw(token: &str) -> Option<Self> {

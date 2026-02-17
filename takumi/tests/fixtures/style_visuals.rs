@@ -321,7 +321,7 @@ fn test_style_border_radius_width_offset() {
                 .padding(Sides([Rem(4.0); 4]))
                 .font_size(Some(Rem(4.0)))
                 .font_weight(FontWeight::from(500.0))
-                .line_height(LineHeight(Rem(4.0 * 1.5)))
+                .line_height(LineHeight::Length(Rem(4.0 * 1.5)))
                 .build()
                 .unwrap(),
             ),

@@ -2,7 +2,10 @@ use std::{borrow::Cow, fmt::Debug};
 
 use cssparser::{BasicParseErrorKind, ParseError, Parser};
 
-use crate::layout::style::{ColorInput, CssToken, FromCss, Length, ParseResult};
+use crate::{
+  layout::style::{ColorInput, CssToken, FromCss, Length, MakeComputed, ParseResult},
+  rendering::Sizing,
+};
 
 /// Represents a text shadow with all its properties.
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -115,6 +118,14 @@ impl<'i> FromCss<'i> for TextShadow {
 impl crate::layout::style::tw::TailwindPropertyParser for TextShadow {
   fn parse_tw(token: &str) -> Option<Self> {
     Self::from_str(token).ok()
+  }
+}
+
+impl MakeComputed for TextShadow {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    self.offset_x.make_computed(sizing);
+    self.offset_y.make_computed(sizing);
+    self.blur_radius.make_computed(sizing);
   }
 }
 

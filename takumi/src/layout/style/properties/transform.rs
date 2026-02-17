@@ -4,7 +4,7 @@ use cssparser::{Parser, Token, match_ignore_ascii_case};
 use taffy::{Point, Size};
 
 use crate::{
-  layout::style::{Angle, CssToken, FromCss, Length, ParseResult, PercentageNumber},
+  layout::style::{Angle, CssToken, FromCss, Length, MakeComputed, ParseResult, PercentageNumber},
   rendering::Sizing,
 };
 
@@ -23,6 +23,15 @@ pub enum Transform {
   Skew(Angle, Angle),
   /// Applies raw affine matrix values
   Matrix(Affine),
+}
+
+impl MakeComputed for Transform {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    if let Transform::Translate(x, y) = self {
+      x.make_computed(sizing);
+      y.make_computed(sizing);
+    }
+  }
 }
 
 /// | a c x |

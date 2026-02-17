@@ -47,6 +47,7 @@ pub enum PropertyParser {
   DropShadow(fn(TextShadow) -> TailwindProperty),
   TextShadow(fn(TextShadow) -> TailwindProperty),
   BlendMode(fn(BlendMode) -> TailwindProperty),
+  FontStretch(fn(FontStretch) -> TailwindProperty),
 }
 
 impl PropertyParser {
@@ -91,6 +92,7 @@ impl PropertyParser {
       Self::DropShadow(f) => TextShadow::parse_tw_with_arbitrary(suffix).map(f),
       Self::TextShadow(f) => TextShadow::parse_tw_with_arbitrary(suffix).map(f),
       Self::BlendMode(f) => BlendMode::parse_tw_with_arbitrary(suffix).map(f),
+      Self::FontStretch(f) => FontStretch::parse_tw_with_arbitrary(suffix).map(f),
     }
   }
 }
@@ -120,6 +122,7 @@ pub static PREFIX_PARSERS: phf::Map<&str, &[PropertyParser]> = phf_map! {
     PropertyParser::FontWeight(TailwindProperty::FontWeight),
     PropertyParser::FontFamily(TailwindProperty::FontFamily),
   ],
+  "font-stretch" => &[PropertyParser::FontStretch(TailwindProperty::FontStretch)],
   "gap-x" => &[PropertyParser::LengthZero(TailwindProperty::GapX)],
   "gap-y" => &[PropertyParser::LengthZero(TailwindProperty::GapY)],
   "gap" => &[PropertyParser::LengthZero(TailwindProperty::Gap)],

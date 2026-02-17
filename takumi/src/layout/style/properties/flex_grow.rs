@@ -1,10 +1,14 @@
 use cssparser::Parser;
 
-use crate::layout::style::{CssToken, FromCss, ParseResult, tw::TailwindPropertyParser};
+use crate::layout::style::{
+  CssToken, FromCss, MakeComputed, ParseResult, tw::TailwindPropertyParser,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 /// Represents a flex grow value.
 pub struct FlexGrow(pub f32);
+
+impl MakeComputed for FlexGrow {}
 
 impl<'i> FromCss<'i> for FlexGrow {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {

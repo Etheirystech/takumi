@@ -15,7 +15,7 @@ use crate::{
   },
   rendering::{Canvas, RenderContext, draw_image},
   resources::{
-    image::{ImageResourceError, ImageSource, is_svg},
+    image::{ImageResourceError, ImageSource, is_svg_like},
     task::FetchTaskCollection,
   },
 };
@@ -152,7 +152,7 @@ pub(crate) fn resolve_image(src: &str, context: &RenderContext) -> ImageResult {
     return parse_data_uri_image(src);
   }
 
-  if is_svg(src) {
+  if is_svg_like(src) {
     #[cfg(feature = "svg")]
     return crate::resources::image::parse_svg_str(src);
     #[cfg(not(feature = "svg"))]

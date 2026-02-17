@@ -8,8 +8,8 @@ use taffy::{Point, Size};
 
 use crate::{
   layout::style::{
-    Affine, Angle, BlendMode, Color, CssToken, FromCss, Length, ParseResult, PercentageNumber,
-    TextShadow, tw::TailwindPropertyParser,
+    Affine, Angle, BlendMode, Color, CssToken, FromCss, Length, MakeComputed, ParseResult,
+    PercentageNumber, TextShadow, tw::TailwindPropertyParser,
   },
   rendering::{
     BlurType, BorderProperties, Canvas, RenderContext, SizedShadow, Sizing, apply_blur,
@@ -84,6 +84,16 @@ pub enum Filter {
 
 /// A list of filter operations
 pub type Filters = Vec<Filter>;
+
+impl MakeComputed for Filter {
+  fn make_computed(&mut self, sizing: &Sizing) {
+    match self {
+      Filter::Blur(length) => length.make_computed(sizing),
+      Filter::DropShadow(shadow) => shadow.make_computed(sizing),
+      _ => {}
+    }
+  }
+}
 
 impl TailwindPropertyParser for Filters {
   fn parse_tw(_token: &str) -> Option<Self> {
