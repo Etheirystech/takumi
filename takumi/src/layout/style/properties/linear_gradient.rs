@@ -137,14 +137,42 @@ impl<'i> FromCss<'i> for GradientStops {
   fn from_css(input: &mut Parser<'i, '_>) -> ParseResult<'i, Self> {
     let mut stops = Vec::new();
 
-    stops.push(GradientStop::from_css(input)?);
+    push_stop_with_double(&mut stops, input)?;
 
     while input.try_parse(Parser::expect_comma).is_ok() {
-      stops.push(GradientStop::from_css(input)?);
+      push_stop_with_double(&mut stops, input)?;
     }
 
     Ok(stops)
   }
+}
+
+/// Parses a gradient stop and handles CSS double-stop syntax.
+/// `color pos1 pos2` is shorthand for two stops: `color pos1, color pos2`.
+fn push_stop_with_double<'i>(
+  stops: &mut Vec<GradientStop>,
+  input: &mut Parser<'i, '_>,
+) -> ParseResult<'i, ()> {
+  let stop = GradientStop::from_css(input)?;
+
+  if let GradientStop::ColorHint {
+    ref color,
+    hint: Some(_),
+  } = stop
+  {
+    if let Ok(second_pos) = input.try_parse(StopPosition::from_css) {
+      let color_clone = color.clone();
+      stops.push(stop);
+      stops.push(GradientStop::ColorHint {
+        color: color_clone,
+        hint: Some(second_pos),
+      });
+      return Ok(());
+    }
+  }
+
+  stops.push(stop);
+  Ok(())
 }
 
 /// Represents a resolved gradient stop with a position.
@@ -936,5 +964,44 @@ mod tests {
     assert_eq!(resolved.len(), 2);
     assert!((resolved[0].position - 0.0).abs() < 1e-3);
     assert!((resolved[1].position - 0.0).abs() < 1e-3);
+  }
+
+  #[test]
+  fn test_parse_double_stop_syntax() {
+    // CSS double-stop: "color pos1 pos2" is shorthand for "color pos1, color pos2"
+    let gradient =
+      LinearGradient::from_str("linear-gradient(to right, #ff0000 0% 45%, transparent 90% 100%)")
+        .unwrap();
+    assert_eq!(gradient.angle, Angle::new(90.0));
+    // Double-stops should be expanded into 4 stops: red@0%, red@45%, transparent@90%, transparent@100%
+    assert_eq!(gradient.stops.len(), 4);
+    assert_eq!(
+      gradient.stops[0],
+      GradientStop::ColorHint {
+        color: ColorInput::Value(Color([255, 0, 0, 255])),
+        hint: Some(StopPosition(Length::Percentage(0.0))),
+      }
+    );
+    assert_eq!(
+      gradient.stops[1],
+      GradientStop::ColorHint {
+        color: ColorInput::Value(Color([255, 0, 0, 255])),
+        hint: Some(StopPosition(Length::Percentage(45.0))),
+      }
+    );
+    assert_eq!(
+      gradient.stops[2],
+      GradientStop::ColorHint {
+        color: ColorInput::Value(Color([0, 0, 0, 0])),
+        hint: Some(StopPosition(Length::Percentage(90.0))),
+      }
+    );
+    assert_eq!(
+      gradient.stops[3],
+      GradientStop::ColorHint {
+        color: ColorInput::Value(Color([0, 0, 0, 0])),
+        hint: Some(StopPosition(Length::Percentage(100.0))),
+      }
+    );
   }
 }
