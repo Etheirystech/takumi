@@ -56,6 +56,9 @@ jobs:
       - name: Check unused dependencies
         run: cargo machete
 
+      - name: Decode bundle key
+        run: echo "${{ secrets.ASSET_BUNDLE_KEY }}" | xxd -r -p > takumi-wasm/src/bundle_key.bin
+
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
