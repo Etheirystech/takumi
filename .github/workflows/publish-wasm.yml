@@ -41,7 +41,6 @@ jobs:
           VERSION="$MAJOR.$MINOR.$PATCH"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Bumping $CURRENT → $VERSION"
-          # Update package.json on disk
           node -e "const p=require('./package.json'); p.version='$VERSION'; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2)+'\n')"
 
       - name: Commit version bump
@@ -91,55 +90,45 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Write package.json for publish
+      - name: Prepare package for publish
         working-directory: takumi-wasm
         run: |
-          cat > publish-package.json << 'EOF'
-          {
-            "name": "@etheirystech/takumi-wasm",
-            "version": "${{ steps.version.outputs.version }}",
-            "description": "Custom fork of @takumi-rs/wasm with extended CSS support (WASM build for browser)",
-            "license": "(MIT OR Apache-2.0)",
-            "exports": {
-              ".": {
-                "node": {
-                  "types": "./bundlers/node.d.ts",
-                  "import": "./bundlers/node.mjs",
-                  "require": "./bundlers/node.cjs"
+          # Remove pkg/.gitignore created by wasm-pack (npm respects it and excludes pkg/ files)
+          rm -f pkg/.gitignore
+
+          # Write publish package.json with @etheirystech scope
+          node -e "
+            const pkg = {
+              name: '@etheirystech/takumi-wasm',
+              version: '${{ steps.version.outputs.version }}',
+              description: 'Custom fork of @takumi-rs/wasm with extended CSS support (WASM build for browser)',
+              license: '(MIT OR Apache-2.0)',
+              exports: {
+                '.': {
+                  node: { types: './bundlers/node.d.ts', import: './bundlers/node.mjs', require: './bundlers/node.cjs' },
+                  types: './pkg/takumi_wasm.d.ts',
+                  import: './pkg/takumi_wasm.js',
+                  require: './pkg/takumi_wasm.cjs',
+                  default: './pkg/takumi_wasm.js'
                 },
-                "types": "./pkg/takumi_wasm.d.ts",
-                "import": "./pkg/takumi_wasm.js",
-                "require": "./pkg/takumi_wasm.cjs",
-                "default": "./pkg/takumi_wasm.js"
+                './no-bundler': {
+                  types: './pkg/takumi_wasm.d.ts',
+                  import: './pkg/takumi_wasm.js',
+                  require: './pkg/takumi_wasm.cjs',
+                  default: './pkg/takumi_wasm.cjs'
+                },
+                './node': { types: './bundlers/node.d.ts', import: './bundlers/node.mjs', require: './bundlers/node.cjs' },
+                './takumi_wasm_bg.wasm': { types: './pkg/takumi_wasm_bg.wasm.d.ts', default: './pkg/takumi_wasm_bg.wasm' },
+                './next': { types: './bundlers/next.d.ts', default: './bundlers/next.js' }
               },
-              "./no-bundler": {
-                "types": "./pkg/takumi_wasm.d.ts",
-                "import": "./pkg/takumi_wasm.js",
-                "require": "./pkg/takumi_wasm.cjs",
-                "default": "./pkg/takumi_wasm.cjs"
-              },
-              "./node": {
-                "types": "./bundlers/node.d.ts",
-                "import": "./bundlers/node.mjs",
-                "require": "./bundlers/node.cjs"
-              },
-              "./takumi_wasm_bg.wasm": {
-                "types": "./pkg/takumi_wasm_bg.wasm.d.ts",
-                "default": "./pkg/takumi_wasm_bg.wasm"
-              },
-              "./next": {
-                "types": "./bundlers/next.d.ts",
-                "default": "./bundlers/next.js"
-              }
-            },
-            "files": [
-              "README.md",
-              "pkg/takumi*",
-              "bundlers/*"
-            ]
-          }
-          EOF
-          cp publish-package.json package.json
+              files: ['README.md', 'pkg/takumi*', 'bundlers/*']
+            };
+            require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          # Verify pkg files will be included
+          echo "Files that will be published:"
+          npx npm-packlist 2>/dev/null || ls -la pkg/ bundlers/ README.md
 
       - name: Publish to npm
         working-directory: takumi-wasm
@@ -148,8 +137,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Upload WASM to R2
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put ultimate-tcg-card-maker/wasm/renderer_${{ steps.version.outputs.version }}.wasm --file=takumi-wasm/pkg/takumi_wasm_bg.wasm --content-type=application/wasm
+        run: npx wrangler r2 object put ultimate-tcg-card-maker/wasm/renderer_${{ steps.version.outputs.version }}.wasm --file=takumi-wasm/pkg/takumi_wasm_bg.wasm --content-type=application/wasm
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
