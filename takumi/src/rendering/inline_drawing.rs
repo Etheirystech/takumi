@@ -22,6 +22,7 @@ use crate::{
   resources::font::FontError,
 };
 
+#[allow(clippy::too_many_arguments)]
 fn draw_glyph_run<I: GenericImageView<Pixel = Rgba<u8>>>(
   style: &SizedFontStyle,
   glyph_run: &GlyphRun<'_, InlineBrush>,
@@ -58,6 +59,13 @@ fn draw_glyph_run<I: GenericImageView<Pixel = Rgba<u8>>>(
   // by drawing a thin same-color stroke under the fill (Chromium approach).
   let faux_bold_width = compute_faux_bold_width(font, style, run.font_size());
   let faux_stretch_factor = compute_faux_stretch_factor(font, style);
+  // Use parley/fontique's synthesis info for faux italic — it knows per-run
+  // whether the matched font lacks italic and needs synthetic slant.
+  let faux_italic_skew = run
+    .synthesis()
+    .skew()
+    .map(|deg| deg.to_radians().tan())
+    .unwrap_or(0.0);
 
   match phase {
     DrawPhase::Stroke => {
@@ -138,6 +146,7 @@ fn draw_glyph_run<I: GenericImageView<Pixel = Rgba<u8>>>(
         phase,
         clip_offset,
         faux_stretch_factor,
+        faux_italic_skew,
       );
     }
   }
@@ -169,6 +178,7 @@ fn draw_glyph_run<I: GenericImageView<Pixel = Rgba<u8>>>(
       faux_bold_width,
       phase,
       faux_stretch_factor,
+      faux_italic_skew,
     )?;
   }
 
@@ -545,13 +555,9 @@ pub(crate) fn draw_inline_layout(
         y: margin,
       },
     )
-  } else if !canvas.text_clip_backgrounds.is_empty() {
+  } else if let Some(ancestor_clip) = canvas.text_clip_backgrounds.last() {
     // Ancestor has background-clip: text — create a cropped view of the ancestor's background
-    match create_ancestor_clip_crop(
-      canvas.text_clip_backgrounds.last().unwrap(),
-      context,
-      layout,
-    ) {
+    match create_ancestor_clip_crop(ancestor_clip, context, layout) {
       Some((image, offset)) => (Some(BackgroundTile::Image(image)), offset),
       None => (None, Point::ZERO),
     }
@@ -656,48 +662,6 @@ pub(crate) fn fix_inline_box_y(y: &mut f32, metrics: &LineMetrics, inline_box_he
   *y += metrics.line_height - metrics.baseline;
 }
 
-#[cfg(test)]
-mod tests {
-  use parley::LineMetrics;
-
-  use super::{fix_inline_box_y, metric_neutral_y_offset};
-
-  #[test]
-  fn fix_inline_box_y_skips_metric_neutral_boxes() {
-    let metrics = LineMetrics {
-      ascent: 36.0,
-      line_height: 88.0,
-      baseline: 74.0,
-      ..LineMetrics::default()
-    };
-    let mut y = 74.0;
-
-    fix_inline_box_y(&mut y, &metrics, 0.0);
-
-    assert_eq!(y, 38.0);
-  }
-
-  #[test]
-  fn fix_inline_box_y_applies_to_regular_boxes() {
-    let metrics = LineMetrics {
-      line_height: 88.0,
-      baseline: 74.0,
-      ..LineMetrics::default()
-    };
-    let mut y = 54.0;
-
-    fix_inline_box_y(&mut y, &metrics, 20.0);
-
-    assert_eq!(y, 68.0);
-  }
-
-  #[test]
-  fn metric_neutral_offset_uses_actual_minus_parley_height() {
-    assert_eq!(metric_neutral_y_offset(50.0, 0.0), 0.0);
-    assert_eq!(metric_neutral_y_offset(20.0, 20.0), 0.0);
-  }
-}
-
 /// Creates a cropped `RgbaImage` from an ancestor's text clip background.
 ///
 /// Maps the current element's position into the ancestor's coordinate space to
@@ -774,4 +738,46 @@ fn compute_faux_stretch_factor(font: FontRef, _style: &SizedFontStyle) -> f32 {
   }
 
   ratio
+}
+
+#[cfg(test)]
+mod tests {
+  use parley::LineMetrics;
+
+  use super::{fix_inline_box_y, metric_neutral_y_offset};
+
+  #[test]
+  fn fix_inline_box_y_skips_metric_neutral_boxes() {
+    let metrics = LineMetrics {
+      ascent: 36.0,
+      line_height: 88.0,
+      baseline: 74.0,
+      ..LineMetrics::default()
+    };
+    let mut y = 74.0;
+
+    fix_inline_box_y(&mut y, &metrics, 0.0);
+
+    assert_eq!(y, 38.0);
+  }
+
+  #[test]
+  fn fix_inline_box_y_applies_to_regular_boxes() {
+    let metrics = LineMetrics {
+      line_height: 88.0,
+      baseline: 74.0,
+      ..LineMetrics::default()
+    };
+    let mut y = 54.0;
+
+    fix_inline_box_y(&mut y, &metrics, 20.0);
+
+    assert_eq!(y, 68.0);
+  }
+
+  #[test]
+  fn metric_neutral_offset_uses_actual_minus_parley_height() {
+    assert_eq!(metric_neutral_y_offset(50.0, 0.0), 0.0);
+    assert_eq!(metric_neutral_y_offset(20.0, 20.0), 0.0);
+  }
 }

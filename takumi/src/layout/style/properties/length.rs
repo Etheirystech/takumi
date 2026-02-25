@@ -447,6 +447,7 @@ impl<const DEFAULT_AUTO: bool> Length<DEFAULT_AUTO> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
 

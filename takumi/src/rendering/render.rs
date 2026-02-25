@@ -422,11 +422,8 @@ fn render_node<'g, Nodes: Node<Nodes>>(
   } else if has_constrain {
     // During text phases, still push constrains (clip-path, overflow) so child
     // text is clipped properly, but skip drawing the shell (background/border).
-    match constrain {
-      CanvasConstrainResult::Some(constrain) => {
-        canvas.push_constrain(constrain);
-      }
-      _ => {}
+    if let CanvasConstrainResult::Some(constrain) = constrain {
+      canvas.push_constrain(constrain);
     }
   }
 

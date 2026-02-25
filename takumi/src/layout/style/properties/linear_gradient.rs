@@ -159,16 +159,15 @@ fn push_stop_with_double<'i>(
     ref color,
     hint: Some(_),
   } = stop
+    && let Ok(second_pos) = input.try_parse(StopPosition::from_css)
   {
-    if let Ok(second_pos) = input.try_parse(StopPosition::from_css) {
-      let color_clone = color.clone();
-      stops.push(stop);
-      stops.push(GradientStop::ColorHint {
-        color: color_clone,
-        hint: Some(second_pos),
-      });
-      return Ok(());
-    }
+    let color_copy = *color;
+    stops.push(stop);
+    stops.push(GradientStop::ColorHint {
+      color: color_copy,
+      hint: Some(second_pos),
+    });
+    return Ok(());
   }
 
   stops.push(stop);
@@ -437,6 +436,7 @@ impl<'i> FromCss<'i> for Angle {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use crate::GlobalContext;
 

@@ -1,0 +1,131 @@
+name: Publish @etheirystech/takumi-core
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.68.4)"
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  MACOSX_DEPLOYMENT_TARGET: "10.13"
+  RUSTFLAGS: >-
+    --remap-path-prefix=/home/runner=~
+    --remap-path-prefix=/Users/runner=~
+    --remap-path-prefix=/root=~
+    --remap-path-prefix=$HOME/.cargo/registry=~/.cargo/registry
+    --remap-path-prefix=$HOME/.rustup=~/.rustup
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - host: macos-15
+            target: aarch64-apple-darwin
+            build: bun run build --target aarch64-apple-darwin
+          - host: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            build: bun run build --target x86_64-unknown-linux-gnu --use-napi-cross
+
+    name: Build for ${{ matrix.settings.target }}
+    runs-on: ${{ matrix.settings.host }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ matrix.settings.target }}
+          stage: build
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --filter ./takumi-napi-core
+
+      - name: Build
+        working-directory: takumi-napi-core
+        run: ${{ matrix.settings.build }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: bindings-${{ matrix.settings.target }}
+          path: |
+            takumi-napi-core/core.*.node
+            takumi-napi-core/index.js
+            takumi-napi-core/index.d.ts
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-slim
+    needs: build
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Download macOS ARM64 artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: bindings-aarch64-apple-darwin
+          path: takumi-napi-core
+
+      - name: Download Linux x64 artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: bindings-x86_64-unknown-linux-gnu
+          path: takumi-napi-core
+
+      - name: Verify artifacts
+        working-directory: takumi-napi-core
+        run: |
+          echo "Checking for required files..."
+          ls -la core.*.node index.js index.d.ts
+          echo ""
+          echo "Found .node files:"
+          ls -la core.*.node
+
+      - name: Write package.json
+        working-directory: takumi-napi-core
+        run: |
+          cat > package.json << 'EOF'
+          {
+            "name": "@etheirystech/takumi-core",
+            "version": "${{ inputs.version }}",
+            "main": "index.js",
+            "types": "index.d.ts",
+            "type": "module",
+            "license": "(MIT OR Apache-2.0)",
+            "files": [
+              "index.js",
+              "index.d.ts",
+              "core.darwin-arm64.node",
+              "core.linux-x64-gnu.node"
+            ],
+            "engines": {
+              "node": ">= 16.0.0"
+            }
+          }
+          EOF
+
+      - name: Publish to npm
+        working-directory: takumi-napi-core
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

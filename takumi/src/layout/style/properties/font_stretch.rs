@@ -15,7 +15,7 @@ impl<'i> FromCss<'i> for FontStretch {
     let location = input.current_source_location();
 
     // Try parsing as a percentage first (e.g., `75%`, `112.5%`)
-    if let Ok(value) = input.try_parse(|input| input.expect_percentage()) {
+    if let Ok(value) = input.try_parse(cssparser::Parser::expect_percentage) {
       return Ok(Self(FontWidth::from_percentage(value * 100.0)));
     }
 
@@ -78,6 +78,7 @@ impl From<FontStretch> for FontWidth {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
   use super::*;
   use crate::layout::style::FromCss;

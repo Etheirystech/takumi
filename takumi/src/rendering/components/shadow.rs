@@ -126,6 +126,7 @@ impl SizedShadow {
 
   /// Draws an outset box shadow as a ring, excluding the element's border-box area.
   /// Per CSS spec, outset box-shadows are drawn outside the border edge only.
+  #[allow(clippy::too_many_arguments)]
   pub fn draw_outset_ring(
     &self,
     canvas: &mut RgbaImage,

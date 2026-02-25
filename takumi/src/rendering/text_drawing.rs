@@ -68,6 +68,7 @@ fn invert_y_coordinate(command: Command) -> Command {
   }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_decoration(
   canvas: &mut Canvas,
   glyph_run: &GlyphRun<'_, InlineBrush>,
@@ -109,6 +110,7 @@ pub(crate) fn draw_glyph_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
   phase: DrawPhase,
   clip_offset: Point<f32>,
   faux_stretch_factor: f32,
+  faux_italic_skew: f32,
 ) {
   // clip_sample_offset combines inline_offset (glyph position) with clip_offset
   // (ancestor crop margin). Used only for sampling the clip image, not for the
@@ -121,6 +123,16 @@ pub(crate) fn draw_glyph_clip_image<I: GenericImageView<Pixel = Rgba<u8>>>(
   transform *= Affine::translation(inline_offset.x, inline_offset.y);
   if faux_stretch_factor != 1.0 {
     transform *= Affine::scale(faux_stretch_factor, 1.0);
+  }
+  if faux_italic_skew != 0.0 {
+    transform *= Affine {
+      a: 1.0,
+      b: 0.0,
+      c: -faux_italic_skew,
+      d: 1.0,
+      x: 0.0,
+      y: 0.0,
+    };
   }
 
   match glyph {
@@ -267,10 +279,22 @@ pub(crate) fn draw_glyph(
   faux_bold_width: f32,
   phase: DrawPhase,
   faux_stretch_factor: f32,
+  faux_italic_skew: f32,
 ) -> Result<()> {
   transform *= Affine::translation(inline_offset.x, inline_offset.y);
   if faux_stretch_factor != 1.0 {
     transform *= Affine::scale(faux_stretch_factor, 1.0);
+  }
+  if faux_italic_skew != 0.0 {
+    // Skew horizontally: negative c component tilts glyphs to the right (italic)
+    transform *= Affine {
+      a: 1.0,
+      b: 0.0,
+      c: -faux_italic_skew,
+      d: 1.0,
+      x: 0.0,
+      y: 0.0,
+    };
   }
 
   match glyph {

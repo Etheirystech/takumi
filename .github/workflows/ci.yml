@@ -490,7 +490,7 @@ jobs:
     name: Release
     runs-on: ubuntu-slim
     needs: pass-test
-    if: github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/master' && github.repository == 'kane50613/takumi'
     permissions:
       contents: write
       id-token: write
@@ -561,6 +561,7 @@ jobs:
     name: Deploy docs
     runs-on: ubuntu-slim
     needs: pass-test
+    if: github.repository == 'kane50613/takumi'
     permissions:
       contents: read
       pull-requests: write
