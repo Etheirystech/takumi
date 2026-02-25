@@ -119,5 +119,5 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: d9ed5f20ea32a601ab782b6aed79d43b
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: r2 object put ultimate-tcg-card-maker/wasm/renderer_${{ inputs.version }}.wasm --file=takumi-wasm/pkg/takumi_wasm_bg.wasm --content-type=application/wasm
