@@ -30,6 +30,10 @@ path = "../takumi"
 features = ["woff2", "svg", "detailed_css_error"]
 default-features = false
 
+# getrandom is only used to enable the "js" feature for wasm32 compatibility
+[package.metadata.cargo-machete]
+ignored = ["getrandom"]
+
 # https://github.com/rust-lang/rust/issues/93294
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = ['-Oz', '--all-features']
