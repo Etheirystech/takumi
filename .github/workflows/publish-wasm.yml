@@ -1,0 +1,116 @@
+name: Publish @etheirystech/takumi-wasm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 0.68.3)"
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build-and-publish:
+    name: Build WASM and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: ./.github/actions/setup-rust
+        with:
+          targets: wasm32-unknown-unknown
+          stage: build
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Decode bundle key
+        run: echo "${{ secrets.ASSET_BUNDLE_KEY }}" | xxd -r -p > takumi-wasm/src/bundle_key.bin
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --filter ./takumi-wasm
+
+      - name: Build WASM
+        working-directory: takumi-wasm
+        run: bun run build
+
+      - name: Verify build output
+        working-directory: takumi-wasm
+        run: |
+          echo "Checking for required files..."
+          ls -la pkg/takumi_wasm_bg.wasm pkg/takumi_wasm.js pkg/takumi_wasm.d.ts pkg/takumi_wasm.cjs
+          echo ""
+          echo "WASM size:"
+          du -h pkg/takumi_wasm_bg.wasm
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Write package.json for publish
+        working-directory: takumi-wasm
+        run: |
+          cat > publish-package.json << 'EOF'
+          {
+            "name": "@etheirystech/takumi-wasm",
+            "version": "${{ inputs.version }}",
+            "description": "Custom fork of @takumi-rs/wasm with extended CSS support (WASM build for browser)",
+            "license": "(MIT OR Apache-2.0)",
+            "exports": {
+              ".": {
+                "node": {
+                  "types": "./bundlers/node.d.ts",
+                  "import": "./bundlers/node.mjs",
+                  "require": "./bundlers/node.cjs"
+                },
+                "types": "./pkg/takumi_wasm.d.ts",
+                "import": "./pkg/takumi_wasm.js",
+                "require": "./pkg/takumi_wasm.cjs",
+                "default": "./pkg/takumi_wasm.js"
+              },
+              "./no-bundler": {
+                "types": "./pkg/takumi_wasm.d.ts",
+                "import": "./pkg/takumi_wasm.js",
+                "require": "./pkg/takumi_wasm.cjs",
+                "default": "./pkg/takumi_wasm.cjs"
+              },
+              "./node": {
+                "types": "./bundlers/node.d.ts",
+                "import": "./bundlers/node.mjs",
+                "require": "./bundlers/node.cjs"
+              },
+              "./takumi_wasm_bg.wasm": {
+                "types": "./pkg/takumi_wasm_bg.wasm.d.ts",
+                "default": "./pkg/takumi_wasm_bg.wasm"
+              },
+              "./next": {
+                "types": "./bundlers/next.d.ts",
+                "default": "./bundlers/next.js"
+              }
+            },
+            "files": [
+              "README.md",
+              "pkg/takumi*",
+              "bundlers/*"
+            ]
+          }
+          EOF
+          cp publish-package.json package.json
+
+      - name: Publish to npm
+        working-directory: takumi-wasm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

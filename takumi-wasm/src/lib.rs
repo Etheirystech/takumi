@@ -9,10 +9,12 @@
   clippy::must_use_candidate
 )]
 
+mod bundle;
 mod helper;
 mod model;
 mod renderer;
 
+pub use bundle::*;
 pub use helper::*;
 pub use model::*;
 pub use renderer::*;

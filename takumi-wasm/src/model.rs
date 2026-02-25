@@ -96,6 +96,16 @@ export type AnimationFrameSource = {
   node: AnyNode,
   durationMs: number,
 };
+
+/**
+ * Decrypts an encrypted asset bundle (.bin) and returns a Map of asset names to their raw bytes.
+ * The decryption key is embedded in the WASM binary.
+ *
+ * @param data - Raw bytes of the encrypted .bin bundle file
+ * @returns Map where keys are asset paths (e.g. "assets/Border-Assets/Card-Border.png") and values are Uint8Array of raw asset bytes
+ * @throws Error if the bundle is invalid, corrupted, or cannot be decrypted
+ */
+export function decryptAssetBundle(data: Uint8Array): Map<string, Uint8Array>;
 "#;
 
 #[wasm_bindgen]

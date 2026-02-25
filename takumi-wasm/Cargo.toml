@@ -14,6 +14,8 @@ wasm-bindgen = "0.2"
 base64 = "0.22"
 serde_bytes = "0.11"
 js-sys = "0.3"
+aes-gcm = "0.10"
+getrandom = { version = "0.2", features = ["js"] }
 
 [dependencies.xxhash-rust]
 version = "0.8"
